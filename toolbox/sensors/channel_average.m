@@ -28,7 +28,11 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, KeepCommon)
 %
 % Authors: Francois Tadel, Marc Lalancette 2012-2019
 
-% To do: average head point locations.
+% To do: transform head point locations, like electrodes.
+% To do: check devices match
+% To do: get brain origins (for different subjects). 
+% To do: use group normalization info (if it exists) to align origins. MNI
+% [0, -15, 15] mm; ~SCS [1, 0, 6] cm.
 
 if nargin < 2 || isempty(KeepCommon)
     KeepCommon = true;
@@ -43,12 +47,17 @@ MeanChannelMat = bst_history('reset', MeanChannelMat);
 MeanChannelMat = bst_history('add',  MeanChannelMat,  'created', 'File created using channel_average');
 if KeepCommon
     % Find common channels to all files.
+    %% Check Device?
     for i = 1:nFiles
         if i == 1
             CommonChans = {ChannelMats{i}.Channel.Name};
         else
             CommonChans = intersect(CommonChans, {ChannelMats{i}.Channel.Name}, 'stable');
         end
+        iSubject
+        [sCortex, iSurface] = bst_get('SurfaceFileByType', iSubject, 'Cortex');
+        BrainOrigin = mean(sCortex.Vertices, 1);
+        
     end
     [Unused, iCommon, iChans] = intersect(CommonChans, {MeanChannelMat.Channel.Name}, 'stable'); % Stable keeps the order of CommonChans.
     % Update channel number in comment
@@ -80,12 +89,11 @@ iRef = find(strcmp({MeanChannelMat.Channel.Type}, 'MEG REF'));
 iMegRef = sort([iMeg, iRef]);
 nChan = numel(MeanChannelMat.Channel);
 
-% For MEG, easier to average 'Dewar=>Native' transformation.  Applies
+% For MEG, best to "average" 'Dewar=>Native' transformation.  Applies
 % directly to MEG and reference channels, all integration points.  Warn if
 % missing or unusual transformations, but shouldn't happen.
 if ~isempty(iMegRef)
-    TransfMeg = zeros(4);
-    nAvg = 0;
+    TransfMeg = cell(0);
     isWarnTransfOrder = false;
     for i = 1:nFiles
         iTransf = find(strcmpi(ChannelMats{i}.TransfMegLabels, 'Dewar=>Native'), 1, 'first');
@@ -93,8 +101,7 @@ if ~isempty(iMegRef)
             if iTransf ~= 1
                 isWarnTransfOrder = true;
             end
-            TransfMeg = TransfMeg + ChannelMats{i}.TransfMeg{iTransf};
-            nAvg = nAvg + 1;
+            TransfMeg{end+1} = ChannelMats{i}.TransfMeg{iTransf};
         end
     end
     if isWarnTransfOrder
@@ -103,6 +110,7 @@ if ~isempty(iMegRef)
         end
         Message = [Message, 'Unexpected MEG transformation order; MEG channel positions may be wrong.'];
     end
+    nAvg = numel(TransfMeg);
     if nAvg < nFiles && ~isempty(Message)
         Message = [Message, '\n'];
     end
@@ -115,7 +123,9 @@ if ~isempty(iMegRef)
         if nAvg < nFiles
             Message = [Message, 'Missing Dewar=>Native transformations; MEG channel positions not fully averaged.'];
         end
-        TransfMeg = TransfMeg ./ nAvg;
+        % Optimal position and orientation average (without shrinkage),
+        % centered on brain origin.
+        TransfMeg = PositionAverage(TransfMeg, BrainOrigin);
         iTransf = find(strcmpi(MeanChannelMat.TransfMegLabels, 'Dewar=>Native'), 1, 'first');
         if isempty(iTransf)
             OldTransf = eye(4);
