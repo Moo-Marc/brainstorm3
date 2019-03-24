@@ -748,6 +748,7 @@ function M = GeoMedian(X, Precision)
     % For better stability, center and normalize the data.
     Centroid = mean(X, 1);
     Scale = max(max(abs(X), [], 1), [], 2); % [1, 1, nSets]
+    Scale(Scale == 0) = 1;
     X = bsxfun(@rdivide, bsxfun(@minus, X, Centroid), Scale); % (X - Centroid(ones(n, 1), :, :)) ./ Scale(ones(n, 1), ones(d, 1), :);
     
     if ~exist('Precision', 'var') || isempty(Precision)
