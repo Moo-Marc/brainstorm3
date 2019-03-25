@@ -1,4 +1,4 @@
-function [MeanChannelMat, Message] = channel_average(ChannelMats, KeepCommon)
+function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, KeepCommon)
 % CHANNEL_AVERAGE: Averages positions of MEG/EEG sensors.
 %
 % INPUT:
@@ -26,38 +26,53 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, KeepCommon)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, Marc Lalancette 2012-2019
+% Authors: Francois Tadel 2012-2018, Marc Lalancette 2019
 
-% To do: transform head point locations, like electrodes.
-% To do: check devices match
-% To do: get brain origins (for different subjects). 
-% To do: use group normalization info (if it exists) to align origins. MNI
-% [0, -15, 15] mm; ~SCS [1, 0, 6] cm.
+% To do: use group normalization info (if it exists) to align origins,
+%        instead of cortex centers.
 
-if nargin < 2 || isempty(KeepCommon)
+if nargin < 3 || isempty(KeepCommon)
     KeepCommon = true;
 end
-
+if nargin < 2 || numel(iStudies) ~= numel(ChannelMats)
+    iStudies = [];
+end
 Message = [];
 
-MeanChannelMat = ChannelMats{1};
 nFiles = numel(ChannelMats);
+MeanChannelMat = ChannelMats{1};
 MeanChannelMat.Projector(:) = []; % Keeps empty structure
 MeanChannelMat = bst_history('reset', MeanChannelMat);
 MeanChannelMat = bst_history('add',  MeanChannelMat,  'created', 'File created using channel_average');
 if KeepCommon
     % Find common channels to all files.
-    %% Check Device?
+    % Check Device? (need raw/data file)
+    BrainOrigin = zeros(nFiles, 3);
+    iSubjects = zeros(nFiles, 1);
     for i = 1:nFiles
         if i == 1
             CommonChans = {ChannelMats{i}.Channel.Name};
         else
             CommonChans = intersect(CommonChans, {ChannelMats{i}.Channel.Name}, 'stable');
         end
-        iSubject
-        [sCortex, iSurface] = bst_get('SurfaceFileByType', iSubject, 'Cortex');
-        BrainOrigin = mean(sCortex.Vertices, 1);
-        
+        if ~isempty(iStudies)
+            sStudy = bst_get('Study', iStudies(i));
+            [sSubject, iSubjects(i)] = bst_get('Subject', sStudy.BrainStormSubject);
+            [isFound, iiSub] = ismember(iSubjects(i), iSubjects(1:i-1));
+            if isFound
+                BrainOrigin(i, :) = BrainOrigin(iiSub, :);
+            else
+                %             [sCortex, iSurface] = bst_get('SurfaceFileByType', iSubject, 'Cortex'); % Doesn't contain the surface data.
+                if ~isempty(sSubject.iCortex) && ~isempty(sSubject.Surface(sSubject.iCortex).FileName)
+                    sCortex = in_tess_bst(sSubject.Surface(sSubject.iCortex).FileName, 0);
+                    BrainOrigin(i, :) = mean(sCortex.Vertices, 1);
+                else
+                    BrainOrigin(i, :) = [1, 0, 6] ./ 100; % in m
+                end
+            end
+        else
+            BrainOrigin(i, :) = [1, 0, 6] ./ 100; % in m
+        end
     end
     [Unused, iCommon, iChans] = intersect(CommonChans, {MeanChannelMat.Channel.Name}, 'stable'); % Stable keeps the order of CommonChans.
     % Update channel number in comment
@@ -77,17 +92,30 @@ if KeepCommon
         iRemoveRefs = setdiff(iRef, iChans);
         if ~isempty(iRemoveRefs)
             Message = 'Some MEG reference channels removed; CTF compensation should probably not be changed using this common channel file.';
-            MeanChannelMat.MegRefCoef(:, setdiff(iRef, iChans)) = [];
+            MeanChannelMat.MegRefCoef(:, iRemoveRefs) = [];
         end
     end
     MeanChannelMat.Channel = MeanChannelMat.Channel(:, iChans);
 else
     CommonChans = {ChannelMats{1}.Channel.Name};
 end
+if numel(unique(iSubjects)) > 1
+    % Discard head points.
+    MeanChannelMat.HeadPoints.Loc = [];
+    MeanChannelMat.HeadPoints.Label = {};
+    MeanChannelMat.HeadPoints.Type = {};
+end
 iMeg = find(strcmp({MeanChannelMat.Channel.Type}, 'MEG'));
 iRef = find(strcmp({MeanChannelMat.Channel.Type}, 'MEG REF'));
 iMegRef = sort([iMeg, iRef]);
 nChan = numel(MeanChannelMat.Channel);
+
+if nChan == 0
+    Message = ['The channels files from the different studies do not have any channels in common.' 10 ...
+        'Cannot create a common channel file.'];
+    MeanChannelMat = [];
+    return;
+end
 
 % For MEG, best to "average" 'Dewar=>Native' transformation.  Applies
 % directly to MEG and reference channels, all integration points.  Warn if
@@ -154,12 +182,14 @@ if ~isempty(iMegRef)
     MeanChannelMat.TransfMegLabels(end) = [];
 end
 
-% For other channels, average positions and orientations.
+% For other channels, average positions and orientations, but correct
+% distances to avoid "shrinkage" towards origin.  (Could use brain center
+% again here.)
 nAvg = zeros(1, nChan);
 % Check the consistency between all the channel files
 for i = 2:nFiles
     % Check number of channels
-    if ~KeepCommon && (length(ChannelMats{i}.Channel) ~= length(MeanChannelMat.Channel))
+    if ~KeepCommon && (length(ChannelMats{i}.Channel) ~= nChan)
         Message = ['The channels files from the different studies do not have the same number of channels.' 10 ...
                    'Cannot create a common channel file.'];
         MeanChannelMat = [];
@@ -182,17 +212,22 @@ for i = 2:nFiles
             return;
         % Sum with existing average
         else
-            MeanChannelMat.Channel(iChan).Loc    = MeanChannelMat.Channel(iChan).Loc    + ChannelMats{i}.Channel(iChans(iChan)).Loc;
+            MeanChannelMat.Channel(iChan).Loc(1:3, :) = MeanChannelMat.Channel(iChan).Loc(1:3, :) + ChannelMats{i}.Channel(iChans(iChan)).Loc(1:3, :);
+            % Also sum distances from origin.
+            MeanChannelMat.Channel(iChan).Loc(4, :) = MeanChannelMat.Channel(iChan).Loc(4, :) + sqrt(sum(ChannelMats{i}.Channel(iChans(iChan)).Loc(1:3, :).^2, 1));
             MeanChannelMat.Channel(iChan).Orient = MeanChannelMat.Channel(iChan).Orient + ChannelMats{i}.Channel(iChans(iChan)).Orient;
             nAvg(iChan) = nAvg(iChan) + 1;
         end
     end
 end
-% Divide the locations of channels by the number of channel files averaged.
-% Orientations need to be normalized.
 for iChan = 1:nChan
     if (nAvg(iChan) > 0)
-        MeanChannelMat.Channel(iChan).Loc    = MeanChannelMat.Channel(iChan).Loc    / nAvg(iChan);
+        % Divide the locations of channels by the number of channel files averaged.
+        MeanChannelMat.Channel(iChan).Loc = MeanChannelMat.Channel(iChan).Loc / nAvg(iChan);
+        % Correct distance from origin.
+        MeanChannelMat.Channel(iChan).Loc(1:3, :) = bsxfun(@times, MeanChannelMat.Channel(iChan).Loc(1:3, :), ...
+            MeanChannelMat.Channel(iChan).Loc(4, :) ./ sqrt(sum(MeanChannelMat.Channel(iChan).Loc(1:3, :).^2, 1)));
+        % Orientations need to be normalized.
         MeanChannelMat.Channel(iChan).Orient = MeanChannelMat.Channel(iChan).Orient / norm(MeanChannelMat.Channel(iChan).Orient);
     end
 end

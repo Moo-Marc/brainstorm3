@@ -83,7 +83,7 @@ if isempty(ChannelMats)
 end
     
 %% ===== COMPUTE CHANNEL MEAN =====
-[MeanChannelMat, Message] = channel_average(ChannelMats);
+[MeanChannelMat, Message] = channel_average(ChannelMats, iSrcStudies);
 % An error occurred 
 if isempty(MeanChannelMat) 
     if ~NoWarning
