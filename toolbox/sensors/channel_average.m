@@ -266,13 +266,18 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
             if isempty(ChannelMats{i}.Channel(iChans(c)).Loc)
                 continue;
                 % Check the size of Loc matrix and the values of Weights matrix
-            elseif ~isempty(MeanChannelMat.Channel(iMean(c)).Loc) && ~isequal(size(MeanChannelMat.Channel(iMean(c)).Loc), size(ChannelMats{i}.Channel(iChans(c)).Loc))
-                Message = ['The channels files from the different studies do not have the same structure.' 10 ...
+            elseif isempty(MeanChannelMat.Channel(iChans(c)).Loc)
+                MeanChannelMat.Channel(iMean(c)).Loc = ChannelMats{i}.Channel(iChans(c)).Loc;
+                Dist{iMean(c)} = sqrt(sum(ChannelMats{i}.Channel(iChans(c)).Loc.^2, 1));
+                MeanChannelMat.Channel(iMean(c)).Orient = ChannelMats{i}.Channel(iChans(c)).Orient;
+                nAvg(iMean(c)) = nAvg(iMean(c)) + 1;
+            elseif ~isequal(size(MeanChannelMat.Channel(iMean(c)).Loc), size(ChannelMats{i}.Channel(iChans(c)).Loc))
+                Message = ['A channel does not have the same location structure between studies.' 10 ...
                     'Cannot create a common channel file.'];
                 MeanChannelMat = [];
                 return;
-                % Sum with existing average
             else
+                % Sum with existing average
                 MeanChannelMat.Channel(iMean(c)).Loc = MeanChannelMat.Channel(iMean(c)).Loc + ChannelMats{i}.Channel(iChans(c)).Loc;
                 % Also sum distances from origin.
                 Dist{iMean(c)} = Dist{iMean(c)} + sqrt(sum(ChannelMats{i}.Channel(iChans(c)).Loc.^2, 1));
