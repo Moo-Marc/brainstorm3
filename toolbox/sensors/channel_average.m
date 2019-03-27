@@ -75,8 +75,12 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
                     MeanChannelMat.Channel = [MeanChannelMat.Channel, ChannelMats{iFile}.Channel(iNew)];
                     if size(MeanChannelMat.MegRefCoef, 2) == size(ChannelMats{iFile}.MegRefCoef, 2)
                         iMeg = find(strcmp({ChannelMats{iFile}.Channel.Type}, 'MEG'));
-                        [Unused, iiMeg] = ismember(iNew, iMeg);
-                        MeanChannelMat.MegRefCoef = [MeanChannelMat.MegRefCoef; ChannelMats{iFile}.MegRefCoef(iiMeg, :)];
+                        [Unused, iiMeg] = ismember(iNew, iMeg); 
+                        % iiMeg is zero for non-matches. Get actual indices of new MEG channels.
+                        iiMeg(iiMeg == 0) = [];
+                        if ~isempty(iiMeg)
+                            MeanChannelMat.MegRefCoef = [MeanChannelMat.MegRefCoef; ChannelMats{iFile}.MegRefCoef(iiMeg, :)];
+                        end
                     % else we'll just remove it later.
                     end
                 end
