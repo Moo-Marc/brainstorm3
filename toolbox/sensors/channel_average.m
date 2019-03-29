@@ -33,17 +33,21 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
     if nargin < 3 || isempty(Method)
         Method = 'all';
     end
-    if nargin < 2 || numel(iStudies) ~= numel(ChannelMats)
+    if nargin < 2 || isempty(iStudies)
         iStudies = [];
+    elseif numel(iStudies) ~= numel(ChannelMats)
+        Message = 'Error: iStudies should be same length as ChannelMats';
+        MeanChannelMat = [];
+        return
     end
     Message = [];
     
     nFiles = numel(ChannelMats);
     MeanChannelMat = ChannelMats{1};
-    MeanChannelMat.Projector(:) = []; % Keeps empty structure
-    MeanChannelMat = bst_history('reset', MeanChannelMat);
-    MeanChannelMat = bst_history('add',  MeanChannelMat,  'created', 'File created using channel_average');
-    
+    if ~isempty(iStudies) && numel(unique(iStudies)) == 1
+        % Only one input, no need to process further.
+        return;
+    end
     
     switch lower(Method)
         case 'common'
@@ -59,27 +63,28 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
             MeanChannelMat.Channel = MeanChannelMat.Channel(:, iChans);
         case 'all'
             % Find all channels from all files.
-            for iFile = 1:nFiles
-                if iFile == 1
-                    KeepChans = {ChannelMats{iFile}.Channel.Name};
+            for i = 1:nFiles
+                if i == 1
+                    KeepChans = {ChannelMats{i}.Channel.Name};
                 else
                     % Union can order sorted or 'stable' which is all 1
                     % then new 2.  Ideally we'd want the new 2 to be in
                     % their "normal" spot. (To do)
                     %                     nChans = numel(KeepChans);
-                    [KeepChans, Unused, iNew] = union(KeepChans, {ChannelMats{iFile}.Channel.Name}, 'stable');
+                    [KeepChans, Unused, iNew] = union(KeepChans, {ChannelMats{i}.Channel.Name}, 'stable');
                     %                     nNew = numel(iNew);
                     %                     for n = 1:nNew
                     %                         iBef =
                     %                     end
-                    MeanChannelMat.Channel = [MeanChannelMat.Channel, ChannelMats{iFile}.Channel(iNew)];
-                    if size(MeanChannelMat.MegRefCoef, 2) == size(ChannelMats{iFile}.MegRefCoef, 2)
-                        iMeg = find(strcmp({ChannelMats{iFile}.Channel.Type}, 'MEG'));
+                    MeanChannelMat.Channel = [MeanChannelMat.Channel, ChannelMats{i}.Channel(iNew)];
+                    % Add CTF compensation coefs for new channels if same number of references (actual same set confirmed later).
+                    if size(MeanChannelMat.MegRefCoef, 2) == size(ChannelMats{i}.MegRefCoef, 2)
+                        iMeg = find(strcmp({ChannelMats{i}.Channel.Type}, 'MEG'));
                         [Unused, iiMeg] = ismember(iNew, iMeg); 
                         % iiMeg is zero for non-matches. Get actual indices of new MEG channels.
                         iiMeg(iiMeg == 0) = [];
                         if ~isempty(iiMeg)
-                            MeanChannelMat.MegRefCoef = [MeanChannelMat.MegRefCoef; ChannelMats{iFile}.MegRefCoef(iiMeg, :)];
+                            MeanChannelMat.MegRefCoef = [MeanChannelMat.MegRefCoef; ChannelMats{i}.MegRefCoef(iiMeg, :)];
                         end
                     % else we'll just remove it later.
                     end
@@ -129,12 +134,27 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
         MeanChannelMat.MegRefCoef = [];
     end
         
+    % Either we don't know the source studies, or we know there are more than 1.
+    % Discard projectors.
+    MeanChannelMat.Projector(:) = []; % Keeps empty structure
+    % New history.
+    MeanChannelMat = bst_history('reset', MeanChannelMat);
+    MeanChannelMat = bst_history('add',  MeanChannelMat,  'average', ...
+        sprintf('Created by channel_average, from %d input files (incl. possible duplicates).', nFiles));
+    % List of distinct averaged files added to history below, if we have iStudies.
+    
     % Find subjects
     if ~isempty(iStudies)
         iSubjects = zeros(nFiles, 1);
         for i = 1:nFiles
-            sStudy = bst_get('Study', iStudies(i));
-            [Unused, iSubjects(i)] = bst_get('Subject', sStudy.BrainStormSubject);
+            [isFound, iFoundFile] = ismember(iSubjects(i), iSubjects(1:i-1));
+            if isFound
+                iSubjects(i) = iSubjects(iFoundFile);
+            else
+                sStudy = bst_get('Study', iStudies(i));
+                [Unused, iSubjects(i)] = bst_get('Subject', sStudy.BrainStormSubject);
+                MeanChannelMat = bst_history('add', MeanChannelMat, 'average', [' - ' sStudy.Channel.FileName]);
+            end
         end
     end
     if isempty(iStudies) || numel(unique(iSubjects)) > 1
@@ -152,9 +172,9 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
         BrainOrigin = zeros(nFiles, 3);
         for i = 1:nFiles
             if ~isempty(iStudies)
-                [isFound, iiSub] = ismember(iSubjects(i), iSubjects(1:i-1));
+                [isFound, iFoundFile] = ismember(iSubjects(i), iSubjects(1:i-1));
                 if isFound
-                    BrainOrigin(i, :) = BrainOrigin(iiSub, :);
+                    BrainOrigin(i, :) = BrainOrigin(iFoundFile, :);
                 else
                     sSubject = bst_get('Subject', iSubjects(i));
                     %             [sCortex, iSurface] = bst_get('SurfaceFileByType', iSubject, 'Cortex'); % Doesn't contain the surface data.
