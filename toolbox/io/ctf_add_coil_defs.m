@@ -1,4 +1,4 @@
-function Channel = ctf_add_coil_defs(Channel, systemName)
+function Channel = ctf_add_coil_defs(Channel, systemName, Accuracy)
 % CTF_ADD_COIL_DEFS: Add transformed coil definitions to the channel info.
 %
 % USAGE:  [Channel] = ctf_add_coil_defs(chs, coil_def_templates)
@@ -38,8 +38,10 @@ me='BST:ctf_add_coil_defs';
 if (nargin < 2) || isempty(systemName)
     systemName = 'Vectorview306';
 end
-% Default Accuracy
-Accuracy = 1;
+if nargin < 3 || isempty(Accuracy)
+    % Default Accuracy (1) is 4 points per coil.
+    Accuracy = 1;
+end
 
 % Localize coils definition file
 coil_def_file = which('coil_def.dat');

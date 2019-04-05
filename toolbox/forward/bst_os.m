@@ -100,10 +100,14 @@ for i = 1:Nc
     end
     % Set start of search here.
     tempCenter = testL(:, BestGridPt);
+    if i == 27
+        disp(tempCenter);
+    end
     tempR = mean(sqrt(sum(bst_bsxfun(@minus, Vertices, tempCenter') .^ 2, 2)));
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+          Opt = optimset('MaxFunEvals', 5e3, 'MaxIter', 1e3, 'TolFun', 1e-9, 'TolX', 1e-6, 'Display', 'final');
 
-    [X,fval,exitflag] = fminsearch(@bst_os_fmins, [tempCenter;tempR], [], Sphere(i).Weight, Vertices);
+    [X,fval,exitflag] = fminsearch(@bst_os_fmins, [tempCenter;tempR], Opt, Sphere(i).Weight, Vertices);
     
     % Define error message
     errMsg = ['Unexpected error. Possible workarounds:' 10 ...

@@ -1,4 +1,4 @@
-function [header, ChannelMat] = ctf_read_res4( res4_file )
+function [header, ChannelMat] = ctf_read_res4(res4_file, CoilAccuracy)
 % CTF_READ_RES4: Read a CTF .ds dataset header.
 %
 % USAGE:  [header, ChannelMat] = ctf_read_res4( res4_file )
@@ -37,6 +37,10 @@ function [header, ChannelMat] = ctf_read_res4( res4_file )
 % FT  02-Apr-2013  Added a test for incorrect number of coefficients
 % FT  26-Feb-2016  Fixed the orientation of the references
 % ------------------------------------------------------------------------------
+
+if nargin < 2 || isempty(CoilAccuracy)
+    CoilAccuracy = 1; % MNE definition of "normal", 4 points per coil.
+end
 
 %% ===== INTIALIZATIONS ======
 % Define constants
@@ -461,7 +465,7 @@ end
 
 %% ===== TEMPLATE COILS DEFINITION =====
 % Apply template sensor geometry
-Channel = ctf_add_coil_defs(Channel, AcqSystem);
+Channel = ctf_add_coil_defs(Channel, AcqSystem, CoilAccuracy);
 
 
 %% ===== CHANNEL GAINS =====

@@ -43,7 +43,9 @@ function sc = weighting_scalar(Loc,Orient,Weight,Vertices,VertNormals)
 
 %MIN_DIST = 10/1000; % minimum acceptable distance. Too close causes trouble
 % KND increased the threshold
-MIN_DIST = 50/1000; % minimum acceptable distance. Too close causes trouble
+MIN_DIST = 1/1000; % minimum acceptable distance. Too close causes trouble
+% What kind of trouble?? This minimum distance (5cm!) severely distorts the
+% weights for vertices that are close to the sensor. (Marc L.)
 
 n = size(Loc,2); % number of sensors
 N = size(Vertices,1); % number of vertices
@@ -55,23 +57,32 @@ VertNormals = VertNormals';
 Vertices = Vertices';
 
 % for each sensor location
-for iS = 1:n,
+FractionMinDist = 0;
+nFrac = 0;
+for iS = 1:n
     if(~isempty(Orient))
         % user gave an orientation, cross it with all normals
-        n = cross(Orient(:,ZeroN+iS),VertNormals);
-    else
-        % EEG case, just use the normal
-        n = VertNormals;
+        VertN = cross(Orient(:,ZeroN+iS),VertNormals);
+%     else
+%         % EEG case, just use the normal
+%         VertNormals = VertNormals;
     end
     
     d = Loc(:,ZeroN+iS) - Vertices; % distance vector
     d3 = sqrt(sum(d.^2)).^3; % cubed distance
     ndx = find(d3 >= (MIN_DIST^3));
-    temp = sum(n(:,ndx) .* d(:,ndx)) ./ d3(ndx);
+    temp = sum(VertN(:,ndx) .* d(:,ndx)) ./ d3(ndx);
     
     sc(ndx) = sc(ndx) + temp * (Weight(iS)/Weight(1)); % always scale relative to first
+    if numel(ndx) < N
+        FractionMinDist = FractionMinDist + (N-numel(ndx))/N;
+        nFrac = nFrac + 1;
+    end
 end
 
+if nFrac > 0
+    disp(FractionMinDist/nFrac);
+end
 % Return column vector
 sc = sc';
 
