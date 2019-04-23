@@ -22,7 +22,7 @@ function varargout = panel_montage(varargin)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2009-2018
+% Authors: Francois Tadel, 2009-2019
 
 eval(macro_method);
 end
@@ -941,6 +941,11 @@ function LoadDefaultMontages() %#ok<DEFNU>
     sMontage.Name = 'Average reference (L -> R)';
     sMontage.Type = 'matrix';
     SetMontage(sMontage.Name, sMontage);
+    % Set scalp current density montage
+    sMontage = db_template('Montage');
+    sMontage.Name = 'Scalp current density';
+    sMontage.Type = 'matrix';
+    SetMontage(sMontage.Name, sMontage);
     % Set HLU distance montage
     sMontage = db_template('Montage');
     sMontage.Name = 'Head distance';
@@ -1001,6 +1006,14 @@ function [sMontage, iMontage] = GetMontage(MontageName, hFig)
                 sTmp = GetMontageAvgRef(sMontage(iAvgRef), hFig, [], 0);  % Global average reference sorted L -> R
                 if ~isempty(sTmp)
                     sMontage(iAvgRef) = sTmp;
+                end
+            end
+            % Find Scalp current density montage
+            iScd = find(strcmpi({sMontage.Name}, 'Scalp current density'));
+            if ~isempty(iScd) && ~isempty(hFig)
+                sTmp = GetMontageScd(sMontage(iScd), hFig, []);
+                if ~isempty(sTmp)
+                    sMontage(iScd) = sTmp;
                 end
             end
             % Find head motion distance montage
@@ -1126,7 +1139,7 @@ function DeleteMontage(MontageName)
     % Get montage index
     [sMontage, iMontage] = GetMontage(MontageName);
     % If this is a non-editable montage: error
-    if ismember(sMontage.Name, {'Bad channels', 'Average reference', 'Average reference (L -> R)', 'Head distance'})
+    if ismember(sMontage.Name, {'Bad channels', 'Average reference', 'Average reference (L -> R)', 'Scalp current density', 'Head distance'})
         return;
     end    
     % Remove montage if it exists
@@ -1195,6 +1208,10 @@ function [sMontage, iMontage] = GetMontagesForFigure(hFig)
             end
             % Not 10-20 EEG: Skip average reference L -> R (only available for recordings figures)
             if strcmpi(GlobalData.ChannelMontages.Montages(i).Name, 'Average reference (L -> R)') && (~strcmpi(FigId.Type, 'DataTimeSeries') || (~isempty(FigId.Modality) && ~ismember(FigId.Modality, {'EEG','SEEG','ECOG','ECOG+SEEG'})) || ~Is1020Setup(FigChannels))
+                continue;
+            end
+            % Not EEG or no 3D positions: Skip scalp current density
+            if strcmpi(GlobalData.ChannelMontages.Montages(i).Name, 'Scalp current density') && ~isempty(FigId.Modality) && (~ismember(FigId.Modality, {'EEG'}) || any(cellfun(@isempty, {GlobalData.DataSet(iDS).Channel(iFigChannels).Loc})))
                 continue;
             end
             % Not CTF-MEG: Skip head motion distance
@@ -1328,14 +1345,16 @@ function sMontage = GetMontageAvgRef(sMontage, Channels, ChannelFlag, isSubGroup
     if isSubGroups && ~isempty(sMontage)
         TargetName = CleanMontageName(sMontage.Name);
         % SEEG/ECOG: Keep only selected modality
-        if ismember(TargetName, {'SEEG', 'ECOG'})
+        if strcmpi(TargetName, 'ECOG_SEEG')
+            iSel = find(ismember({Channels.Type}, {'SEEG', 'ECOG'}));
+        elseif ismember(TargetName, {'SEEG', 'ECOG'})
             iSel = find(strcmpi({Channels.Type}, TargetName));
         else
             iSel = find(strcmpi({Channels.Group}, TargetName));
         end
         % Nothing selected: return
         if isempty(iSel)
-            disp(['BST> Error: No channel correspond to montage "' sMontage.Name '".']);
+            disp(['BST> Error: No channels correspond to montage "' sMontage.Name '".']);
             sMontage = [];
             return;
         end
@@ -1392,6 +1411,62 @@ function sMontage = GetMontageAvgRef(sMontage, Channels, ChannelFlag, isSubGroup
         sMontage.ChanNames = sMontage.ChanNames(iOrder);
     end
 end
+
+
+%% ===== GET SCALP CURRENT DENSITY MONTAGE =====
+% USAGE:  sMontage = GetMontageScd(sMontage, hFig)
+%         sMontage = GetMontageScd(sMontage, Channels, ChannelFlag)
+function sMontage = GetMontageScd(sMontage, Channels, ChannelFlag)
+    global GlobalData;
+    % Get info from figure
+    if (nargin < 3) || isempty(ChannelFlag)
+        hFig = Channels;
+        TsInfo = getappdata(hFig, 'TsInfo');
+        if isempty(TsInfo.Modality) || ~ismember(TsInfo.Modality, {'EEG'})
+            sMontage = [];
+            return;
+        end
+        % Get figure description
+        [hFig, iFig, iDS] = bst_figures('GetFigure', hFig);
+        % Check that this figure can handle montages
+        if isempty(GlobalData.DataSet(iDS).Figure(iFig).SelectedChannels) || isempty(GlobalData.DataSet(iDS).Channel) || isempty(GlobalData.DataSet(iDS).Measures.ChannelFlag)
+            sMontage = [];
+            return;
+        end
+        % Get channels
+        Channels = GlobalData.DataSet(iDS).Channel;
+    end
+    % Select EEG channels only
+    iChannels = find(strcmp({Channels.Type}, 'EEG'));
+    % Check that there are non-zero positions available for all the channels
+    if isempty(iChannels) || any(cellfun(@isempty, {Channels.Loc})) || ~any(cellfun(@any, {Channels.Loc}))
+        sMontage = [];
+        return;
+    end
+    Channels = Channels(iChannels);
+    
+    % Get surface of electrodes
+    pnt = [Channels.Loc]';
+    tri = channel_tesselate(pnt);
+    % Compute the SCP (surface Laplacian) with FieldTrip function lapcal
+    Lscp = lapcal(pnt, tri);
+    % Normalize matrix to obtain something that keeps the same range of values
+    % (no justification for this, but since these are arbitrary units, let's have less disruptive displays)
+    Lscp = Lscp ./ mean(sqrt(sum(Lscp.^2, 2)));
+    % If no montage in input: get the head distance montage
+    if isempty(sMontage)
+        iMontage = find(strcmpi({GlobalData.ChannelMontages.Montages.Name}, 'Scalp current density'), 1);
+        if isempty(iMontage)
+            return;
+        end
+        sMontage = GlobalData.ChannelMontages.Montages(iMontage(1));
+    end
+    % Update montage
+    sMontage.DispNames = {Channels.Name};
+    sMontage.ChanNames = {Channels.Name};
+    sMontage.Matrix    = Lscp;
+end
+
 
 %% ===== GET HEAD MOTION MONTAGE =====
 % USAGE:  sMontage = GetMontageHeadDistance(sMontage, hFig)
@@ -1643,7 +1718,7 @@ function newName = RenameMontage(oldName, newName)
         error('Condition does not exist.');
     end
     % If this is a non-editable montage: error
-    if ismember(sMontage.Name, {'Bad channels', 'Average reference', 'Average reference (L -> R)', 'Head distance'})
+    if ismember(sMontage.Name, {'Bad channels', 'Average reference', 'Average reference (L -> R)', 'Scalp current density', 'Head distance'})
         newName = [];
         return;
     end
@@ -1971,6 +2046,13 @@ function AddAutoMontagesSeeg(Comment, ChannelMat) %#ok<DEFNU>
     if isempty(AllModalities) || isempty(iEeg) 
         return;
     end
+    % Add ECOG+SEEG
+    if all(ismember({'SEEG','ECOG'}, AllModalities))
+        AllModalities = cat(2, 'ECOG_SEEG', AllModalities);
+        isEcogSeeg = 1;
+    else
+        isEcogSeeg = 0;
+    end
 
     % === MONTAGES: ALL ===
     for iMod = 1:length(AllModalities)
@@ -2016,6 +2098,9 @@ function AddAutoMontagesSeeg(Comment, ChannelMat) %#ok<DEFNU>
         [AllGroups, AllTags, AllInd] = ParseSensorNames(ChannelMat.Channel(iChan));
         % Count montages
         nMontages.(Mod) = nMontages.(Mod) + 1;
+        if isEcogSeeg && any(ismember({'SEEG','ECOG'}, AllModalities))
+            nMontages.ECOG_SEEG = nMontages.ECOG_SEEG + 1;
+        end
 
         % === MONTAGE: ORIG ===
         % Create montage
@@ -2031,7 +2116,13 @@ function AddAutoMontagesSeeg(Comment, ChannelMat) %#ok<DEFNU>
         sMontageAllOrig.(Mod).ChanNames = cat(2, sMontageAllOrig.(Mod).ChanNames, sMontage.ChanNames);
         sMontageAllOrig.(Mod).DispNames = cat(2, sMontageAllOrig.(Mod).DispNames, sMontage.DispNames);
         sMontageAllOrig.(Mod).Matrix(size(sMontageAllOrig.(Mod).Matrix,1)+(1:size(sMontage.Matrix,1)), size(sMontageAllOrig.(Mod).Matrix,2)+(1:size(sMontage.Matrix,2))) = sMontage.Matrix;
-
+        % Add to ECOG+SEEG montage
+        if isEcogSeeg && any(ismember({'SEEG','ECOG'}, AllModalities))
+            sMontageAllOrig.ECOG_SEEG.ChanNames = cat(2, sMontageAllOrig.ECOG_SEEG.ChanNames, sMontage.ChanNames);
+            sMontageAllOrig.ECOG_SEEG.DispNames = cat(2, sMontageAllOrig.ECOG_SEEG.DispNames, sMontage.DispNames);
+            sMontageAllOrig.ECOG_SEEG.Matrix(size(sMontageAllOrig.ECOG_SEEG.Matrix,1)+(1:size(sMontage.Matrix,1)), size(sMontageAllOrig.ECOG_SEEG.Matrix,2)+(1:size(sMontage.Matrix,2))) = sMontage.Matrix;
+        end
+        
         % Skip bipolar montages if there is only one channel
         if (length(iChan) < 2)
             continue;
@@ -2057,7 +2148,7 @@ function AddAutoMontagesSeeg(Comment, ChannelMat) %#ok<DEFNU>
                 i2 = i+1;
             end
             % SEEG: Skip if the two channels are not consecutive
-            if strcmpi(Mod, 'SEEG') && ~ismember(AllInd(i1) - AllInd(i2), [1,-1])
+            if ismember(Mod, {'SEEG','ECOG'}) && ~ismember(AllInd(i1) - AllInd(i2), [1,-1])
                 continue;
             end
             % Create entry
@@ -2072,7 +2163,13 @@ function AddAutoMontagesSeeg(Comment, ChannelMat) %#ok<DEFNU>
         sMontageAllBip1.(Mod).ChanNames = cat(2, sMontageAllBip1.(Mod).ChanNames, sMontage.ChanNames);
         sMontageAllBip1.(Mod).DispNames = cat(2, sMontageAllBip1.(Mod).DispNames, sMontage.DispNames);
         sMontageAllBip1.(Mod).Matrix(size(sMontageAllBip1.(Mod).Matrix,1)+(1:size(sMontage.Matrix,1)), size(sMontageAllBip1.(Mod).Matrix,2)+(1:size(sMontage.Matrix,2))) = sMontage.Matrix;
-
+        % Add to ECOG+SEEG montage
+        if isEcogSeeg && any(ismember({'SEEG','ECOG'}, AllModalities))
+            sMontageAllBip1.ECOG_SEEG.ChanNames = cat(2, sMontageAllBip1.ECOG_SEEG.ChanNames, sMontage.ChanNames);
+            sMontageAllBip1.ECOG_SEEG.DispNames = cat(2, sMontageAllBip1.ECOG_SEEG.DispNames, sMontage.DispNames);
+            sMontageAllBip1.ECOG_SEEG.Matrix(size(sMontageAllBip1.ECOG_SEEG.Matrix,1)+(1:size(sMontage.Matrix,1)), size(sMontageAllBip1.ECOG_SEEG.Matrix,2)+(1:size(sMontage.Matrix,2))) = sMontage.Matrix;
+        end
+        
         % === MONTAGE: BIPOLAR 2 ===
         % Example: A1-A2, A2-A3, ...
         % Create montage
@@ -2084,7 +2181,7 @@ function AddAutoMontagesSeeg(Comment, ChannelMat) %#ok<DEFNU>
         iDisp = 1;
         for i = 1:length(ChanNames)-1
             % SEEG: Skip if the two channels are not consecutive
-            if strcmpi(Mod, 'SEEG') && ~ismember(AllInd(i) - AllInd(i+1), [1,-1])
+            if ismember(Mod, {'SEEG','ECOG'}) && ~ismember(AllInd(i) - AllInd(i+1), [1,-1])
                 continue;
             end
             % Create entry
@@ -2099,7 +2196,13 @@ function AddAutoMontagesSeeg(Comment, ChannelMat) %#ok<DEFNU>
         sMontageAllBip2.(Mod).ChanNames = cat(2, sMontageAllBip2.(Mod).ChanNames, sMontage.ChanNames);
         sMontageAllBip2.(Mod).DispNames = cat(2, sMontageAllBip2.(Mod).DispNames, sMontage.DispNames);
         sMontageAllBip2.(Mod).Matrix(size(sMontageAllBip2.(Mod).Matrix,1)+(1:size(sMontage.Matrix,1)), size(sMontageAllBip2.(Mod).Matrix,2)+(1:size(sMontage.Matrix,2))) = sMontage.Matrix;
-
+        % Add to ECOG+SEEG montage
+        if isEcogSeeg && any(ismember({'SEEG','ECOG'}, AllModalities))
+            sMontageAllBip2.ECOG_SEEG.ChanNames = cat(2, sMontageAllBip2.ECOG_SEEG.ChanNames, sMontage.ChanNames);
+            sMontageAllBip2.ECOG_SEEG.DispNames = cat(2, sMontageAllBip2.ECOG_SEEG.DispNames, sMontage.DispNames);
+            sMontageAllBip2.ECOG_SEEG.Matrix(size(sMontageAllBip2.ECOG_SEEG.Matrix,1)+(1:size(sMontage.Matrix,1)), size(sMontageAllBip2.ECOG_SEEG.Matrix,2)+(1:size(sMontage.Matrix,2))) = sMontage.Matrix;
+        end
+        
         % === MONTAGE: LOCAL AVG REF ===
         % Create montage
         sMontage = db_template('Montage');
@@ -2349,7 +2452,9 @@ function is1020Setup = Is1020Setup(channelNames)
         end
     end
     if isempty(chans1020)
-        error('Could not find EEG default 10-10 channels.');
+        disp('ERROR: Could not find EEG default 10-10 channels.');
+        is1020Setup = 0;
+        return;
     end
 
     % Go through active channels and look for 10-10 names

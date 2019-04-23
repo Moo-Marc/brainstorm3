@@ -686,6 +686,9 @@ function UpdateDisplayOptions(hFig)
             DispName = 'Avg Ref';
         elseif strcmpi(TsInfo.MontageName, 'Average reference (L -> R)')
             DispName = 'Avg Ref LR';
+        % Scalp current density
+        elseif strcmpi(TsInfo.MontageName, 'Scalp current density')
+            DispName = 'SCD';
         % Head distance
         elseif strcmpi(TsInfo.MontageName, 'Head distance')
             DispName = 'Head';
@@ -1774,7 +1777,8 @@ function EventTypeSetColor()
     % Get event (ignore current epoch)
     sEvent = GetEvents(iEvent, 1);
     % Ask new color to the user
-    newColor = uisetcolor(sEvent.color, 'Select event color');
+    % newColor = uisetcolor(sEvent.color, 'Select event color');
+    newColor = java_dialog('color');
     % If no color was selected: exit
     if (length(newColor) ~= 3) || all(sEvent.color == newColor)
         return
