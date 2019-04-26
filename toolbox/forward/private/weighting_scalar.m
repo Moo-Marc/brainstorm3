@@ -43,7 +43,7 @@ function sc = weighting_scalar(Loc,Orient,Weight,Vertices,VertNormals)
 
 %MIN_DIST = 10/1000; % minimum acceptable distance. Too close causes trouble
 % KND increased the threshold
-MIN_DIST = 1/1000; % minimum acceptable distance. Too close causes trouble
+MIN_DIST = 0/1000; % minimum acceptable distance. Too close causes trouble
 % What kind of trouble?? This minimum distance (5cm!) severely distorts the
 % weights for vertices that are close to the sensor. (Marc L.)
 

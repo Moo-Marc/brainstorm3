@@ -61,8 +61,10 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
       error('Not enough vertices in provided head shape mesh (or vertices matrix transposed).')
   end
   
-  Options = [1, 2, 1, 2]; % Bst_os
-%   Options = [1, 2, 0, 1]; % "better?"
+%   Options = [1, 2, 1, -2]; % Bst_os
+%   Options = [1, 2, 0, 1]; % NC2
+%   Options = [1, 1, 0, 1]; % NC
+  Options = [2, 1, 0, 1]; % TC
   WeightType = Options(1);
   DistanceType = Options(2);
   EqualdA = Options(3);
@@ -139,11 +141,11 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
                   error('Invalid weight type.')
           end
       end
-      % In Bst, actually only squared in the error formula
-      %       % Apply power to "strengthen" weight effect.
-      %       if WeightPower ~= 1 % For speed, since not really used.
-      %           Weights = Weights .^ WeightPower;
-      %       end
+      % In Bst, actually only squared in the error formula, use negative to "flag" this.
+      % Apply power to "strengthen" weight effect.
+      if WeightPower > 1 % For speed, since not really used.
+          Weights = Weights.^WeightPower;
+      end
       % Apply extra weight factor accounting for varying area at each vertex.
       if ~EqualdA
           Weights = Weights .* NormdA;
@@ -240,12 +242,17 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   % minimizes that distance is the mean distance between the center and
   % points. So no need to search for it.
   function D = WMeanSquareDistance(Center)
-%     SquareDist = sum( bsxfun(@minus, Vertices, Center').^2 , 2);
-%     R = Weights' * sqrt(SquareDist);
-%     D = Weights' * SquareDist - R^2; % Weighted variance formula.
-    Distances = sqrt(sum( bsxfun(@minus, Vertices, Center').^2 , 2));
-    R = Weights' * Distances;
-    D = Weights'.^ WeightPower * (Distances - R).^2; % bst_os
+      if WeightPower < 0 
+          % Apply weight power after computing radius.
+          Distances = sqrt(sum( bsxfun(@minus, Vertices, Center').^2 , 2));
+          R = Weights' * Distances;
+          D = Weights'.^-WeightPower * (Distances - R).^2; % bst_os
+      else
+          % Weight power was already applied.
+          SquareDist = sum( bsxfun(@minus, Vertices, Center').^2 , 2);
+          R = Weights' * sqrt(SquareDist);
+          D = Weights' * SquareDist - R^2; % Weighted variance formula.
+      end
   end
   
   % -----------------------------------------------------------------------
@@ -270,6 +277,85 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   
 end
 
+
+function WM = WeightedMedian(List, Weights)
+  % Find the weighted median of a list of real numbers.
+  %
+  % WM = WeightedMedian(List, Weights)
+  %
+  % Minimizes the (optionally weighted) sum of absolute difference between
+  % list elements and a fixed point.  
+  %
+  % 
+  % © Copyright 2018 Marc Lalancette
+  % The Hospital for Sick Children, Toronto, Canada
+  % 
+  % This file is part of a free repository of Matlab tools for MEG 
+  % data processing and analysis <https://gitlab.com/moo.marc/MMM>.
+  % You can redistribute it and/or modify it under the terms of the GNU
+  % General Public License as published by the Free Software Foundation,
+  % either version 3 of the License, or (at your option) a later version.
+  % 
+  % This program is distributed WITHOUT ANY WARRANTY. 
+  % See the LICENSE file, or <http://www.gnu.org/licenses/> for details.
+  % 
+  % 2013
+  
+  % When there are no (or equal) weights, the logic behind the median
+  % minimizing the sum of distances is that we pair up end points: the
+  % sum of distances from any (third) point will be minimized if it is
+  % anywhere in between them. We continue pairing the next "end" points
+  % until there are an equal number on each side (median).
+  %
+  % Now, with weights, we can again pair up end points, but there will be
+  % a remainder if one point has a larger weight.  Simply think of this
+  % as an extra point and continue pairing up (partial) points until
+  % there are again an equal number of these partial points on each side.
+  % In general, the partial sum of weights on one side won't exactly add
+  % up to half, so the weighted median will be ON the last remaining
+  % (partial) point. Otherwise, as in the median, it is anywhere in
+  % between the middle two (partial) points.
+  
+  if ~isvector(List)
+    error('WeightedMedian requires a vector.')
+  elseif ~exist('Weights', 'var') || length(Weights) == 1
+    % warning('No weights or equal weights: using regular median.');
+    WM = median(List);
+    return
+  elseif size(Weights) ~= size(List)
+    error('Weights and List sizes don''t match.')
+  elseif any(Weights < 0)
+    error('Negative weights are not allowed.')
+  end
+  
+  % First sort the list and weights.
+  [List, Order] = sort(List);
+  Weights = Weights(Order);
+  % n = length(List);
+  
+  Total = sum(Weights); % Weights might not be normalized.
+  if Total == 0
+    warning('All weights = 0, median undetermined.');
+    WM = NaN;
+    return
+  end
+  
+  PartialSum = 0;
+  w = 0;
+  while PartialSum < Total/2
+    w = w + 1;
+    PartialSum = PartialSum + Weights(w);
+  end
+  
+  if PartialSum == Total/2
+    % Use weighted mean here, but any number between List(w: w+1) is
+    % equally valid.
+    WM = WeightedMean(List(w: w+1), Weights(w: w+1));
+  else
+    WM = List(w);
+  end
+  
+end 
 
 function [VN, VdA, FN, FdA] = SurfaceNormals(Vertices, Faces, Normalize, Handedness)
   % Normal vectors at vertices and faces of a triangulated surface.

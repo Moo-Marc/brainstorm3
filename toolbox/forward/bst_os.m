@@ -81,31 +81,31 @@ for i = 1:Nc
     % Initialize radius (3 cm, handle pathological cases)
     tempR = min(.9*tempD, abs(tempD - 0.03));
     
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%% ??? %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Grid something comparable
-    testL = source_grid(tempD, tempR, 1/1000, .3)'; % sparse sampling
-    testL = [testL [testL(1:2,:);-testL(3,:)]]; % upper and lower hemispheres
-    testL = testL + tempCenter(:,ones(1,size(testL,2)));
-    
-    % Scan over this grid for weighting scalars, find the best match
-    BestGridPt = 1; % assume first
-    best_err = bst_os_fmins([testL(:,1);tempR], Sphere(i).Weight, Vertices);
-    for iGrid = 2:size(testL,2), % for each additional grid point
-        test_err = bst_os_fmins([testL(:,iGrid);tempR], Sphere(i).Weight, Vertices);
-        if(test_err < best_err),
-            BestGridPt = iGrid;
-        end
-    end
-    % Set start of search here.
-    tempCenter = testL(:, BestGridPt);
-    if i == 27
-        disp(tempCenter);
-    end
-    tempR = mean(sqrt(sum(bst_bsxfun(@minus, Vertices, tempCenter') .^ 2, 2)));
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-          Opt = optimset('MaxFunEvals', 5e3, 'MaxIter', 1e3, 'TolFun', 1e-9, 'TolX', 1e-6, 'Display', 'final');
+%     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     %%% ??? %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     % Grid something comparable
+%     testL = source_grid(tempD, tempR, 1/1000, .3)'; % sparse sampling
+%     testL = [testL [testL(1:2,:);-testL(3,:)]]; % upper and lower hemispheres
+%     testL = testL + tempCenter(:,ones(1,size(testL,2)));
+%     
+%     % Scan over this grid for weighting scalars, find the best match
+%     BestGridPt = 1; % assume first
+%     best_err = bst_os_fmins([testL(:,1);tempR], Sphere(i).Weight, Vertices);
+%     for iGrid = 2:size(testL,2), % for each additional grid point
+%         test_err = bst_os_fmins([testL(:,iGrid);tempR], Sphere(i).Weight, Vertices);
+%         if(test_err < best_err),
+%             BestGridPt = iGrid;
+%         end
+%     end
+%     % Set start of search here.
+%     tempCenter = testL(:, BestGridPt);
+%     if i == 27
+%         disp(tempCenter);
+%     end
+%     tempR = mean(sqrt(sum(bst_bsxfun(@minus, Vertices, tempCenter') .^ 2, 2)));
+%     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+          Opt = optimset('MaxFunEvals', 5e3, 'MaxIter', 1e3, 'TolFun', 1e-9, 'TolX', 1e-6, 'Display', 'off'); % 'final'
 
     [X,fval,exitflag] = fminsearch(@bst_os_fmins, [tempCenter;tempR], Opt, Sphere(i).Weight, Vertices);
     
