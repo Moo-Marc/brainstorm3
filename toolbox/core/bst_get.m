@@ -172,6 +172,8 @@ function [argout1, argout2, argout3, argout4, argout5] = bst_get( varargin )
 %    - bst_get('AutoScaleY')                 : {0,1} - If 1, the axis limits are updated when the figure is updated
 %    - bst_get('ShowXGrid')                  : {0,1} - If 1, show the XGrid in the time series figures
 %    - bst_get('ShowYGrid')                  : {0,1} - If 1, show the YGrid in the time series figures
+%    - bst_get('ShowZeroLines')              : {0,1} - If 1, show the Y=0 lines in the columns view
+%    - bst_get('ShowEventsMode')             : {'dot','line','none'}
 %    - bst_get('Resolution')                 : [resX,resY] fixed resolutions for X and Y axes
 %    - bst_get('FixedScaleY', Modality)      : Struct with the scales to impose on the recordings for the selected modality
 %    - bst_get('UseSigProcToolbox')       : Use Matlab's Signal Processing Toolbox when available
@@ -1174,7 +1176,7 @@ switch contextName
         
         
 %% ==== CHANNEL FILE FOR STUDY ====
-    % Usage: [ChannelFile] = bst_get('ChannelFileForStudy', StudyFile/DataFile)
+    % Usage: [ChannelFile, sStudy, iStudy] = bst_get('ChannelFileForStudy', StudyFile/DataFile)
     case 'ChannelFileForStudy'
         % Parse inputs
         if (nargin == 2)
@@ -1191,6 +1193,8 @@ switch contextName
         sChannel = bst_get('ChannelForStudy', iStudy);
         if ~isempty(sChannel)
             argout1 = sChannel.FileName;
+            argout2 = sStudy;
+            argout3 = iStudy;
         else
             argout1 = [];
         end
@@ -2047,7 +2051,7 @@ switch contextName
                     sItem = sStudy.Image(iItem);
                 end
             % ===== ANATOMY =====
-            case {'cortex','scalp','innerskull','outerskull','tess'}
+            case {'cortex','scalp','innerskull','outerskull','tess','fibers'}
                 [sStudy, iStudy, iItem] = bst_get('SurfaceFile', FileName);
                 if (nargout >= 5) && ~isempty(sStudy)
                     sItem = sStudy.Surface(iItem);
@@ -2427,6 +2431,13 @@ switch contextName
             argout1 = 0;
         end
         
+    case 'ShowZeroLines'
+        if isfield(GlobalData, 'Preferences') && isfield(GlobalData.Preferences, 'ShowZeroLines')
+            argout1 = GlobalData.Preferences.ShowZeroLines;
+        else
+            argout1 = 1;
+        end
+        
     case 'Resolution'
         if isfield(GlobalData, 'Preferences') && isfield(GlobalData.Preferences, 'Resolution')
             argout1 = GlobalData.Preferences.Resolution;
@@ -2441,6 +2452,13 @@ switch contextName
             argout1 = [];
         end
         
+    case 'ShowEventsMode'
+        if isfield(GlobalData, 'Preferences') && isfield(GlobalData.Preferences, 'ShowEventsMode')
+            argout1 = GlobalData.Preferences.ShowEventsMode;
+        else
+            argout1 = 'dot';
+        end
+
     case 'AutoUpdates'
         if isfield(GlobalData, 'Preferences') && isfield(GlobalData.Preferences, 'AutoUpdates')
             argout1 = GlobalData.Preferences.AutoUpdates;
@@ -2686,7 +2704,8 @@ switch contextName
             'MatrixIn',    '', ...
             'MatrixOut',   '', ...
             'MontageIn',   '', ...
-            'MontageOut',  '');
+            'MontageOut',  '', ...
+            'FibersIn',    '');
         argout1 = FillMissingFields(contextName, defPref);
 
     case 'OsType'
@@ -2718,28 +2737,26 @@ switch contextName
             'UseCtfComp',     1, ...
             'Shortcuts',      []);
         defPref.Shortcuts = {...
-            '1', 'event1'; ...
-            '2', 'event2'; ...
-            '3', 'event3'; ...
-            '4', 'event4'; ...
-            '5', 'event5'; ...
-            '6', 'event6'; ...
-            '7', 'event7'; ...
-            '8', 'event8'; ...
-            '9', 'event9'};
+            '1', 'event1', 'simple', []; ...   % Key, event name, event type (simple,extended,page), epoch time
+            '2', 'event2', 'simple', []; ... 
+            '3', 'event3', 'simple', []; ...
+            '4', 'event4', 'simple', []; ...
+            '5', 'event5', 'simple', []; ...
+            '6', 'event6', 'simple', []; ...
+            '7', 'event7', 'simple', []; ...
+            '8', 'event8', 'simple', []; ...
+            '9', 'event9', 'simple', []};
         argout1 = FillMissingFields(contextName, defPref);
         % If invalid PageDuration: reset to default
         if (argout1.PageDuration <= 0.1)
             argout1.PageDuration = defPref.PageDuration;
         end
-%         % Adapt to FIF block size
-%         if (nargin >= 2)
-%             sFile = varargin{2};
-%             if strcmpi(sFile.format, 'FIF') && isfield(sFile.header, 'raw') && isfield(sFile.header.raw, 'rawdir') && ~isempty(sFile.header.raw.rawdir)
-%                 fifBlockSize = min(double(sFile.header.raw.rawdir(1).nsamp), 5000);
-%                 argout1.PageDuration = fifBlockSize * max(1, round(argout1.PageDuration / fifBlockSize)) / sFile.prop.sfreq;
-%             end
-%         end
+        % If old shortcuts: reset to defaults
+        if any(size(argout1.Shortcuts) ~= size(defPref.Shortcuts))
+            disp('BST> Warning: Reset keyboard shortcuts to include new options.');
+            argout1.Shortcuts = defPref.Shortcuts;
+            bst_set('RawViewerOptions', argout1);
+        end
 
     case 'MontageOptions'
         defPref = struct('Shortcuts', []);
@@ -3139,6 +3156,7 @@ switch contextName
                     {'.tri'},   'TRI (*.tri)',             'TRI'; ...
                     {'.mri', '.fif', '.img', '.ima', '.nii', '.mgh', '.mgz', '.mnc', '.mni', '.gz', '_subjectimage'}, 'Volume mask or atlas (subject space)', 'MRI-MASK'; ...
                     {'.mri', '.fif', '.img', '.ima', '.nii', '.mgh', '.mgz', '.mnc', '.mni', '.gz'},                  'Volume mask or atlas (MNI space)',     'MRI-MASK-MNI'; ...
+                    {'.nwbaux'},   'Neurodata Without Borders (*.nwbaux)', 'NWB'; ...
                     {'*'},      'All surface files (*.*)', 'ALL'; ...
                    };
                
@@ -3331,12 +3349,15 @@ switch contextName
                     {'.pos','.pol','.elp','.txt'}, 'EEG: Polhemus (*.pos;*.pol;*.elp;*.txt)',    'POLHEMUS'; ...
                     {'*'},                         'EEG: ASCII: Name,XYZ (*.*)',       'ASCII_NXYZ'; ...
                     {'*'},                         'EEG: ASCII: Name,XYZ_MNI (*.*)',   'ASCII_NXYZ_MNI'; ...
+                    {'*'},                         'EEG: ASCII: Name,XYZ_World (*.*)', 'ASCII_NXYZ_WORLD'; ...
                     {'*'},                         'EEG: ASCII: Name,XY (*.*)',        'ASCII_NXY'; ...
                     {'*'},                         'EEG: ASCII: XYZ (*.*)',            'ASCII_XYZ'; ...
                     {'*'},                         'EEG: ASCII: XYZ_MNI (*.*)',        'ASCII_XYZ_MNI'; ...
+                    {'*'},                         'EEG: ASCII: XYZ_World (*.*)',      'ASCII_XYZ_WORLD'; ...
                     {'*'},                         'EEG: ASCII: XY (*.*)',             'ASCII_XY'; ...
                     {'*'},                         'EEG: ASCII: XYZ,Name (*.*)',       'ASCII_XYZN'; ...
                     {'*'},                         'EEG: ASCII: XYZ_MNI,Name (*.*)',   'ASCII_XYZN_MNI'; ...
+                    {'*'},                         'EEG: ASCII: XYZ_World,Name (*.*)', 'ASCII_XYZN_WORLD'; ...
                     {'*'},                         'EEG: ASCII: Name,Theta,Phi (*.*)', 'ASCII_NTP'; ...
                     {'*'},                         'EEG: ASCII: Theta,Phi (*.*)',      'ASCII_TP'; ...
                     };
@@ -3421,6 +3442,10 @@ switch contextName
                     {'.sel'},     'MNE selection files (*.sel)',              'MNE'; ...
                     {'.mon'},     'Text montage files (*.mon)',               'MON'; ...
                     {'_montage'}, 'Brainstorm montage files (montage_*.mat)', 'BST'};
+            case 'fibers'
+                argout1 = {...
+                    {'.trk'},    'TrackVis (*.trk)',                       'TRK'; ...
+                    {'_fibers'}, 'Brainstorm fibers files (fibers_*.mat)', 'BST'};
         end
         
 
