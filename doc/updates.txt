@@ -1,3 +1,9 @@
+---------------------------------------------------------------
+June 2019
+- Anatomy: Import MRI segmentation output from SPM12/CAT12
+- Anatomy: Added support for MarsAtlas parcellation in BrainVISA
+- IO: Support for Intan RHS+RHD files
+---------------------------------------------------------------
 May 2019
 - IO: Support for NWB ECOG (recordings + surfaces)
 - Database: Improved database updates between versions
@@ -6,7 +12,7 @@ May 2019
 - GUI: Time series viewer: New menu to group all the display options
 - GUI: Events: New options for displaying event markers (lines, dots, hide)
 - GUI: New keyboard shortcuts for recordings viewer (F6, Shift+F6, Ctrl+L, Ctrl+H)
-- GUI: New options for custom events shortcuts (full page, extended events) 
+- GUI: New options for custom events shortcuts (full page, extended events)
 ---------------------------------------------------------------
 April 2019
 - GUI: New color picker to replace Matlab's buggy uisetcolor

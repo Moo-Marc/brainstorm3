@@ -438,7 +438,12 @@ switch (lower(action))
 
             % ===== MATRIX =====
             case {'matrix', 'pmatrix'}
-                view_matrix( filenameRelative, 'TimeSeries' );
+                if ~isempty(strfind(filenameRelative, '_temporalgen'))
+                    % Decoding with temporal generalization should be opened as images
+                    view_matrix( filenameRelative, 'Image');
+                else
+                    view_matrix( filenameRelative, 'TimeSeries');
+                end
                 
             % ===== IMAGE =====
             case 'image'
@@ -1103,6 +1108,9 @@ switch (lower(action))
                         end
                         if strcmpi(nodeType, 'cortex')
                             gui_component('MenuItem', jPopup, [], 'Extract envelope', IconLoader.ICON_SURFACE_INNERSKULL, [], @(h,ev)SurfaceEnvelope_Callback(filenameFull));
+                            if ~isempty(sSubject.iInnerSkull)
+                                gui_component('MenuItem', jPopup, [], 'Force inside skull', IconLoader.ICON_SURFACE_INNERSKULL, [], @(h,ev)tess_force_envelope(filenameFull, sSubject.Surface(sSubject.iInnerSkull).FileName));
+                            end
                         end
                         gui_component('MenuItem', jPopup, [], 'Remove interpolations', IconLoader.ICON_RECYCLE, [], @(h,ev)SurfaceClean_Callback(filenameFull, 0));
                         gui_component('MenuItem', jPopup, [], 'Clean surface',         IconLoader.ICON_RECYCLE, [], @(h,ev)SurfaceClean_Callback(filenameFull, 1));
@@ -2713,11 +2721,11 @@ function jSubMenus = fcnPopupTopoNoInterp(jMenu, FileName, AllMod, is2DLayout, i
     % Display defaults
     UseSmoothing = 0;
     % Remove "MEG" from the list if there is either "MEG MAG" or "MEG GRAD" also
-    if all(ismember({'MEG GRAD', 'MEG'}, AllMod)) || all(ismember({'MEG MAG', 'MEG'}, AllMod))
+    if ~isempty(AllMod) && (all(ismember({'MEG GRAD', 'MEG'}, AllMod)) || all(ismember({'MEG MAG', 'MEG'}, AllMod)))
         AllMod = setdiff(AllMod, 'MEG'); 
     end
     % Replace "MEG GRAD" with independant sensor types (MEG GRAD2, MEG GRAD3, GRADNORM)
-    if (ismember('MEG GRAD', AllMod))
+    if ~isempty(AllMod) && ismember('MEG GRAD', AllMod)
         AllMod = setdiff(AllMod, 'MEG GRAD'); 
         if isGradNorm
             AllMod{end+1} = 'MEG GRADNORM';
