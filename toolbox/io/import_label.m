@@ -123,9 +123,9 @@ for iFile = 1:length(LabelFiles)
         else
             % FreeSurfer Atlas names
             switch (fBase)
-                case {'lh.aparc.a2009s', 'rh.aparc.a2009s'}
+                case {'lh.aparc.a2009s', 'rh.aparc.a2009s', 'lh.aparc_a2009s.freesurfer', 'rh.aparc_a2009s.freesurfer'}
                     sAtlas.Name = 'Destrieux';
-                case {'lh.aparc', 'rh.aparc'}
+                case {'lh.aparc', 'rh.aparc', 'lh.aparc_DK40.freesurfer', 'rh.aparc_DK40.freesurfer'}
                     sAtlas.Name = 'Desikan-Killiany';
                 case {'lh.BA', 'rh.BA', 'lh.BA_exvivo', 'rh.BA_exvivo'}
                     sAtlas.Name = 'Brodmann';
@@ -157,6 +157,8 @@ for iFile = 1:length(LabelFiles)
                     sAtlas.Name = 'Lausanne-S125';
                 case {'lh.myaparc_250', 'rh.myaparc_250'}
                     sAtlas.Name = 'Lausanne-S250';
+                case {'lh.aparc_HCP_MMP1.freesurfer', 'rh.aparc_HCP_MMP1.freesurfer'}
+                    sAtlas.Name = 'HCP_MMP1';
                 otherwise
                     % FreeSurfer left/right
                     if (length(fBase) > 3) && (strcmpi(fBase(1:3), 'lh.') || strcmpi(fBase(1:3), 'rh.'))
@@ -228,7 +230,11 @@ for iFile = 1:length(LabelFiles)
                 % New scout index
                 iScout = length(sAtlas.Scouts) + 1;
                 sAtlas.Scouts(iScout).Vertices = find(labels == lablist(i))';
-                sAtlas.Scouts(iScout).Label    = file_unique(colortable.struct_names{iTable}, {sAtlas.Scouts.Label});
+                if ~isempty(colortable.struct_names{iTable})
+                    sAtlas.Scouts(iScout).Label = file_unique(colortable.struct_names{iTable}, {sAtlas.Scouts.Label});
+                else
+                    sAtlas.Scouts(iScout).Label = file_unique('Unknown', {sAtlas.Scouts.Label});
+                end
                 sAtlas.Scouts(iScout).Color    = colortable.table(iTable,1:3) ./ 255;
                 sAtlas.Scouts(iScout).Function = 'Mean';
                 sAtlas.Scouts(iScout).Region   = 'UU';
@@ -334,10 +340,11 @@ for iFile = 1:length(LabelFiles)
             iAtlas = 'Add';
             
         % ===== MRI VOLUMES =====
-        case {'MRI-MASK', 'MRI-MASK-MNI'}
+        case {'MRI-MASK', 'MRI-MASK-MNI', 'MRI-MASK-NOOVERLAP', 'MRI-MASK-NOOVERLAP-MNI'}
             bst_progress('text', 'Reading atlas...');
             % If the file that is loaded has to be interpreted in MNI space
-            isMni = strcmpi(FileFormat, 'MRI-MASK-MNI');
+            isMni = strcmpi(FileFormat, 'MRI-MASK-MNI') || strcmpi(FileFormat, 'MRI-MASK-NOOVERLAP-MNI');
+            isOverlap = strcmpi(FileFormat, 'MRI-MASK') || strcmpi(FileFormat, 'MRI-MASK-MNI');
             % Read MRI volume  (do not normalize values when reading an atlas)
             if isMni
                 sMriMask = in_mri(LabelFiles{iFile}, 'ALL-MNI', [], 0);
@@ -407,8 +414,10 @@ for iFile = 1:length(LabelFiles)
                 % Get the binary mask of the current region
                 mask = (sMriMask.Cube == allValues(i));
                 % Dilate mask
-                mask = mri_dilate(mask);
-                mask = mri_dilate(mask);
+                if isOverlap
+                    mask = mri_dilate(mask);
+                    mask = mri_dilate(mask);
+                end
                 % Get the vertices in this mask
                 iScoutVert = find(mask(indMri));
                 if isempty(iScoutVert)
