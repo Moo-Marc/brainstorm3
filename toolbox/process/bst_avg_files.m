@@ -270,7 +270,7 @@ for iFile = 1:nFiles
         ChannelFlag = [];
     end
     % Clear the loaded file
-    clear sMat;
+    %clear sMat;
 
     % === DIFFERENCE A-B ===
     % Substract file from set B, if applicable

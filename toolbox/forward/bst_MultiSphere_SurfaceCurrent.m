@@ -38,7 +38,7 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   %     (Brainstorm uses 2).
   %
   % 
-  % © Copyright 2018 Marc Lalancette
+  % Â© Copyright 2018 Marc Lalancette
   % The Hospital for Sick Children, Toronto, Canada
   % 
   % This file is part of a free repository of Matlab tools for MEG 
@@ -287,7 +287,7 @@ function WM = WeightedMedian(List, Weights)
   % list elements and a fixed point.  
   %
   % 
-  % © Copyright 2018 Marc Lalancette
+  % Â© Copyright 2018 Marc Lalancette
   % The Hospital for Sick Children, Toronto, Canada
   % 
   % This file is part of a free repository of Matlab tools for MEG 
@@ -383,7 +383,7 @@ function [VN, VdA, FN, FdA] = SurfaceNormals(Vertices, Faces, Normalize, Handedn
   %    for each new format or application.
   %
   % 
-  % © Copyright 2018 Marc Lalancette
+  % Â© Copyright 2018 Marc Lalancette
   % The Hospital for Sick Children, Toronto, Canada
   % 
   % This file is part of a free repository of Matlab tools for MEG 
