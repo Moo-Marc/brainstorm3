@@ -50,7 +50,7 @@ end
 
 %% Initialize measurement parameters
 DataTransfer = 1;
-ReComputeHeadModel = 1; 
+ReComputeHeadModel = 0; 
 
 % This is a continuous loop to catch when the acq has stopped and allow the
 % user to start again without computing a new head model

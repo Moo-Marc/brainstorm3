@@ -451,6 +451,9 @@ function HeadPositionRaw = HeadLocalization()
     % Read the HLC data from buffer
     hdr = buffer('get_hdr', [], ft_host, ft_port);
     dat = GetNextDataBuffer();    
+    if isempty(dat)
+        error('Did not receive any data.  Restart the buffer?');
+    end
     % Head localization channels
     first_HL = 'HLC0011';          % First Head Localization index 
     frHL = find(strcmpi(hdr.channel_names,first_HL));
@@ -597,6 +600,13 @@ function ResultsFile = ComputeImagingKernel()
              'isSplit', 0, ...
              'SplitLength', 4000));
 
+    % Check if head model created, otherwise maybe sensors inside head
+    % (weird position if demo without phantom).  Check report!
+    sHeadModel = bst_get('HeadModelForStudy', iRealTimestudy);
+    if isempty(sHeadModel)
+        bst_error('Head model not created.  Check report for more info.');
+    end
+         
     % ===== Source Estimation 
     % Process: Compute sources
     sFile = bst_process('CallProcess', 'process_inverse', InputFiles, [], ...
@@ -633,6 +643,7 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     
     % TODO include the path to these files in bst
     rtlib_dir = fileparts(which(mfilename));
+% TO DO: investigate this directory does not exist!  Which file is needed?    
     addpath(fullfile(rtlib_dir, 'dllFiles'));
 
     bst_progress('start', 'Initialize realtime collection', 'Checking channel information');
@@ -812,7 +823,7 @@ end
 function CheckHeadMovement()
 
     BlockTimeLength = RTConfig.BlockSamples/RTConfig.SampRate;
-    if mod(count, fix(10/BlockTimeLength))==0       % check movement every 10 seconds
+    if mod(nCount, fix(10/BlockTimeLength))==0       % check movement every 10 seconds
 %         % Delay Estimation
 %         hdr = buffer('get_hdr', [], RTConfig.FThost, RTConfig.FTport);
 %         delayOfProc = (hdr.nsamples - RTConfig.prevSample)/RTConfig.SampRate;
@@ -833,7 +844,7 @@ function CheckHeadMovement()
                 if button(1) == 'Y'
                     %                 disp(['Subject moves her/his head (more than ',num2str(EstImgKerThr),'cm)'])
                     disp('Realtime Processing stopped because of movement')
-                    count = 0;
+                    nCount = 0;
                     % Send a pulse to LPT2 as stim --> Stop data recording
                     if SendTriggers
                         io64(ioObj,LPT2,StopTrig);
