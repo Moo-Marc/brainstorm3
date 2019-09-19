@@ -67,7 +67,7 @@ nodeType = char(bstNodes(1).getType());
 filenameRelative = char(bstNodes(1).getFileName());
 % Build full filename (depends on the file type)
 switch lower(nodeType)
-    case {'surface', 'scalp', 'cortex', 'outerskull', 'innerskull', 'fibers', 'other', 'subject', 'studysubject', 'anatomy'}
+    case {'surface', 'scalp', 'cortex', 'outerskull', 'innerskull', 'fibers', 'fem', 'other', 'subject', 'studysubject', 'anatomy'}
         filenameFull = bst_fullfile(ProtocolInfo.SUBJECTS, filenameRelative);
     case {'study', 'condition', 'rawcondition', 'channel', 'headmodel', 'data','rawdata', 'datalist', 'results', 'kernel', 'pdata', 'presults', 'ptimefreq', 'pspectrum', 'image', 'video', 'videolink', 'noisecov', 'ndatacov', 'dipoles','timefreq', 'spectrum', 'matrix', 'matrixlist', 'pmatrix'}
         filenameFull = bst_fullfile(ProtocolInfo.STUDIES, filenameRelative);
@@ -167,7 +167,7 @@ switch (lower(action))
     
             % ===== SURFACE ===== 
             % Mark/unmark (items selected : 1/category)
-            case {'scalp', 'outerskull', 'innerskull', 'cortex', 'fibers'}
+            case {'scalp', 'outerskull', 'innerskull', 'cortex', 'fibers', 'fem'}
                 iSubject = bstNodes(1).getStudyIndex();
                 sSubject = bst_get('Subject', iSubject);
                 iSurface = bstNodes(1).getItemIndex();
@@ -178,6 +178,7 @@ switch (lower(action))
                     case 'outerskull', SurfaceType = 'OuterSkull';
                     case 'cortex',     SurfaceType = 'Cortex';
                     case 'fibers',     SurfaceType = 'Fibers';
+                    case 'fem',        SurfaceType = 'FEM';
                     case 'other',      SurfaceType = 'Other';
                 end
                 if (~ismember(iSurface, sSubject.(['i' SurfaceType])) || ~bstNodes(1).isMarked())
@@ -185,7 +186,11 @@ switch (lower(action))
                     db_surface_default(iSubject, SurfaceType, iSurface);
                 % Else, this item is already marked : display it in surface viewer
                 else
-                    view_surface(filenameRelative);
+                    if strcmpi(nodeType, 'fem')
+                        view_surface_fem(filenameRelative, [], [], 'NewFigure');
+                    else
+                        view_surface(filenameRelative);
+                    end
                 end
             % Other surface: display it
             case 'other'
@@ -573,19 +578,23 @@ switch (lower(action))
                         jItem.setEnabled(0);
                     end
                     % === GENERATE BEM ===
-                    jItem = gui_component('MenuItem', jPopup, [], 'Generate BEM surfaces', IconLoader.ICON_ANATOMY, [], @(h,ev)tess_bem(iSubject));
+                    jItemBem = gui_component('MenuItem', jPopup, [], 'Generate BEM surfaces', IconLoader.ICON_ANATOMY, [], @(h,ev)tess_bem(iSubject));
+                    jItemFem = gui_component('MenuItem', jPopup, [], 'Generate FEM mesh', IconLoader.ICON_FEM, [], @(h,ev)process_generate_fem('ComputeInteractive', iSubject, []));
                     % Disable if no scalp or cortex available
                     if isempty(sSubject.iCortex) || isempty(sSubject.iScalp) || isempty(sSubject.Anatomy)
-                        jItem.setEnabled(0);
+                        jItemBem.setEnabled(0);
+                        jItemFem.setEnabled(0);
                     end
                     % === GENERATE SPM CANONICAL ===
-                     jItem1 = gui_component('MenuItem', jPopup, [], 'SPM12 canonical surfaces', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_generate_canonical('ComputeInteractive', iSubject, []));
-                     jItem2 = gui_component('MenuItem', jPopup, [], 'CAT12 MRI segmentation', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_segment_cat12('ComputeInteractive', iSubject, []));
-                     if isempty(sSubject.Anatomy)
-                         jItem1.setEnabled(0);
-                         jItem2.setEnabled(0);
-                     end
+                    AddSeparator(jPopup);
+                    jItem1 = gui_component('MenuItem', jPopup, [], 'SPM12 canonical surfaces', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_generate_canonical('ComputeInteractive', iSubject, []));
+                    jItem2 = gui_component('MenuItem', jPopup, [], 'CAT12 MRI segmentation', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_segment_cat12('ComputeInteractive', iSubject, []));
+                    if isempty(sSubject.Anatomy)
+                        jItem1.setEnabled(0);
+                        jItem2.setEnabled(0);
+                    end
                     % === DEFACE MRI ===
+                    AddSeparator(jPopup);
                     OPTIONS = struct('isDefaceHead', 1);
                     jItem = gui_component('MenuItem', jPopup, [], 'Deface anatomy', IconLoader.ICON_ANATOMY, [], @(h,ev)process_mri_deface('Compute', iSubject, OPTIONS));
                     if isempty(sSubject.Anatomy)
@@ -1000,8 +1009,10 @@ switch (lower(action))
                     end
                     AddSeparator(jPopup);
                     gui_component('MenuItem', jPopup, [], 'Generate head surface', IconLoader.ICON_SURFACE_SCALP, [], @(h,ev)tess_isohead(filenameRelative));
-                     gui_component('MenuItem', jPopup, [], 'SPM12 canonical surfaces', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_generate_canonical('ComputeInteractive', iSubject, iAnatomy));
-                     gui_component('MenuItem', jPopup, [], 'CAT12 MRI segmentation', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_segment_cat12('ComputeInteractive', iSubject, iAnatomy));
+                    gui_component('MenuItem', jPopup, [], 'Generate FEM mesh', IconLoader.ICON_FEM, [], @(h,ev)process_generate_fem('ComputeInteractive', iSubject, iAnatomy));
+                    AddSeparator(jPopup);
+                    gui_component('MenuItem', jPopup, [], 'SPM12 canonical surfaces', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_generate_canonical('ComputeInteractive', iSubject, iAnatomy));
+                    gui_component('MenuItem', jPopup, [], 'CAT12 MRI segmentation', IconLoader.ICON_SURFACE_CORTEX, [], @(h,ev)process_segment_cat12('ComputeInteractive', iSubject, iAnatomy));
                     % SEEG/ECOG
                     AddSeparator(jPopup);
                     gui_component('MenuItem', jPopup, [], 'SEEG/ECOG implantation', IconLoader.ICON_SEEG_DEPTH, [], @(h,ev)bst_call(@panel_ieeg, 'CreateNewImplantation', filenameRelative));
@@ -1126,19 +1137,21 @@ switch (lower(action))
                 jMenuExport = gui_component('MenuItem', [], [], 'Export to file', IconLoader.ICON_SAVE, [], @(h,ev)export_surfaces(filenameFull));
              
 %% ===== POPUP: FIBERS =====
-            case {'fibers'}
-                % Get subject
-                iSubject = bstNodes(1).getStudyIndex();
-                sSubject = bst_get('Subject', iSubject);
-                
+            case 'fibers'             
                 % === DISPLAY ===
                 gui_component('MenuItem', jPopup, [], 'Display', IconLoader.ICON_DISPLAY, [], @(h,ev)view_surface(filenameRelative));
-
                 % === SUBSAMPLE ===
                 if ~bst_get('ReadOnly')
                     gui_component('MenuItem', jPopup, [], 'Less fibers...', IconLoader.ICON_DOWNSAMPLE, [], @(h,ev)fibers_downsample(filenameFull));
                     gui_component('MenuItem', jPopup, [], 'Interpolate points...', IconLoader.ICON_FLIP, [], @(h,ev)fibers_interp(filenameFull));
                 end
+              
+%% ===== POPUP: FEM HEAD MODEL =====
+            case 'fem'
+                % Display
+                gui_component('MenuItem', jPopup, [], 'Display', IconLoader.ICON_DISPLAY, [], @(h,ev)view_surface_fem(filenameRelative));
+
+                
                 
 %% ===== POPUP: NOISECOV =====
             case {'noisecov', 'ndatacov'}
@@ -3174,10 +3187,13 @@ function CreateMenuExtraFiles(jMenu, DataFile)
     end
     % Load sFile structure
     DataMat = in_bst_data(DataFile, 'F');
-    % Get DS folder
+    % Get folder containing the raw file
     RawFolder = bst_fileparts(DataMat.F.filename);
-    nFiles = 0;
+    if ~isdir(RawFolder)
+        return;
+    end
     % Find session log file
+    nFiles = 0;
     listDir = dir(bst_fullfile(RawFolder, '*.txt'));
     for i = 1:length(listDir)
         SessionsFile = bst_fullfile(RawFolder, listDir(i).name);
@@ -3185,7 +3201,10 @@ function CreateMenuExtraFiles(jMenu, DataFile)
         nFiles = nFiles + 1;
     end
     % Find image files
-    listDir = [dir(bst_fullfile(RawFolder, '*.jpg')), dir(bst_fullfile(RawFolder, '*.gif')), dir(bst_fullfile(RawFolder, '*.JPG')), dir(bst_fullfile(RawFolder, '*.png')), dir(bst_fullfile(RawFolder, '*.tif'))];
+    listDir = [dir(bst_fullfile(RawFolder, '*.jpg')), dir(bst_fullfile(RawFolder, '*.gif')), dir(bst_fullfile(RawFolder, '*.png')), dir(bst_fullfile(RawFolder, '*.tif'))];
+    if ~ispc
+        listDir = [listDir, dir(bst_fullfile(RawFolder, '*.JPG')), dir(bst_fullfile(RawFolder, '*.GIF')), dir(bst_fullfile(RawFolder, '*.PNG')), dir(bst_fullfile(RawFolder, '*.TIF'))];
+    end
     for i = 1:length(listDir)
         ImageFile = bst_fullfile(RawFolder, listDir(i).name);
         gui_component('MenuItem', jMenu, [], listDir(i).name, IconLoader.ICON_IMAGE, [], @(h,ev)view_image(ImageFile));
