@@ -1,4 +1,4 @@
-function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, Faces)
+function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, Faces, dA)
   % Fit a sphere based on currents on the conductor surface.
   %
   % [Sphere, Weights] = ...
@@ -93,12 +93,14 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   
   InitialSphere.Center = sum(Vertices, 1)' / nV;
   InitialSphere.Radius = 0; % not needed
-  % InitialSphere.Radius = mean( sqrt(sum( bsxfun(@minus, Vertices, InitialSphere.Center).^2, 2)) );
+  % InitialSphere.Radius = mean( sqrt(sum( bsxfun(@minus, Vertices, InitialSphere.Center').^2, 2)) );
 
   % Calculate dA normal vectors to each vertex (not needed in all methods).
   %   fprintf('Calculating normal surface element vectors.\n')
-  [dA, NormdA] = SurfaceNormals(Vertices, Faces, true, -1); % normalize, left handed.
-  dA = tess_normals(Vertices, Faces); % about 0.1% median diff, but up to 20%
+  [dAUnused, NormdA] = SurfaceNormals(Vertices, Faces, true, -1); % normalize, left handed.
+  if nargin < 4
+    dA = tess_normals(Vertices, Faces); % about 0.1% median diff, but up to 20%
+  end
   % Verify dA are pointing out and not in.
   if sum(sum( dA .* bsxfun(@minus, Vertices, InitialSphere.Center'), 2) < 0) >= nV/5
     error('More than 20%% normal vectors to the conductor surface seem to be pointing inwards.')
@@ -172,13 +174,13 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
               % Distance between shape point and sphere.
               Sphere(c).Center = OptimFun(@WMeanDistance, InitialSphere.Center, Opt);
               Sphere(c).Radius = WeightedMedian( sqrt(sum( ...
-                  (Vertices - Sphere(c).Center(ones(nV, 1), :)).^2 , 2)), Weights );
+                  bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2)), Weights );
               
           case 2
               % Square distance between shape point and sphere.
               Sphere(c).Center = OptimFun(@WMeanSquareDistance, InitialSphere.Center, Opt);
               Sphere(c).Radius = Weights' * sqrt(sum( ...
-                  (Vertices - Sphere(c).Center(ones(nV, 1), :)).^2 , 2));
+                  bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2));
               %               if c == 27
               %                   TmpCenter = fminsearch(@bst_os_fmins, InitialSphere.Center, Opt, Weights, Vertices);
               %                   keyboard;
@@ -189,14 +191,14 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
               % No radius involved, use same as case 0.
               Sphere(c).Center = OptimFun(@WMNormalDistance, InitialSphere.Center, Opt);
               Sphere(c).Radius = WeightedMedian( sqrt(sum( ...
-                  (Vertices - Sphere(c).Center(ones(nV, 1), :)).^2 , 2)), Weights );
+                  bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2)), Weights );
               
           case 4
               % Square distance between sphere center and line along shape surface
               % normal.  No radius involved, use same as case 1.
               Sphere(c).Center = OptimFun(@WMSquareNormalDistance, InitialSphere.Center, Opt);
               Sphere(c).Radius = Weights' * sqrt(sum( ...
-                  (Vertices - Sphere(c).Center(ones(nV, 1), :)).^2 , 2));
+                  bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2));
       end
 
       % Check for invalid sphere.
