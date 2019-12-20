@@ -150,7 +150,7 @@ function bstPanelNew = CreatePanel() %#ok<DEFNU>
         gui_component('MenuItem', jMenu, [], 'Delete group', IconLoader.ICON_EVT_TYPE_DEL, [], @(h,ev)bst_call(@EventTypeDel));
         gui_component('MenuItem', jMenu, [], 'Rename group', IconLoader.ICON_EDIT, [], @(h,ev)bst_call(@EventTypeRename));
         gui_component('MenuItem', jMenu, [], 'Set color', IconLoader.ICON_COLOR_SELECTION, [], @(h,ev)bst_call(@EventTypeSetColor));
-        jItem = gui_component('MenuItem', jMenu, [], 'Show/hide group', IconLoader.ICON_DISPLAY, [], @(h,ev)bst_call(@EventTypeToggleVisible));
+        jItem = gui_component('MenuItem', jMenu, [], 'Show/hide group', IconLoader.ICON_DISPLAY, [], @(h,ev)CallWithAccelerator(@EventTypeToggleVisible));
         jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_H, 0));
         gui_component('MenuItem', jMenu, [], 'Mark group as bad', IconLoader.ICON_BAD, [], @(h,ev)bst_call(@EventTypeSetBad));
         jMenu.addSeparator();
@@ -170,15 +170,15 @@ function bstPanelNew = CreatePanel() %#ok<DEFNU>
         jMenu.addSeparator();
         gui_component('MenuItem', jMenu, [], 'Edit keyboard shortcuts', IconLoader.ICON_KEYBOARD, [], @(h,ev)gui_show('panel_raw_shortcuts', 'JavaWindow', 'Event keyboard shortcuts', [], 1, 0, 0));
         jMenu.addSeparator();
-        jItem = gui_component('MenuItem', jMenu, [], 'Add / delete event', IconLoader.ICON_EVT_OCCUR_ADD, [], @(h,ev)bst_call(@ToggleEvent));
+        jItem = gui_component('MenuItem', jMenu, [], 'Add / delete event', IconLoader.ICON_EVT_OCCUR_ADD, [], @(h,ev)CallWithAccelerator(@ToggleEvent));
         jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_E, 0));
         jItem = gui_component('MenuItem', jMenu, [], '<HTML>Edit notes&nbsp;&nbsp;&nbsp;<FONT color="#A0A0A"><I>Double-click</I></FONT>', IconLoader.ICON_EDIT, [], @(h,ev)bst_call(@EventEditNotes));
-        jItem = gui_component('MenuItem', jMenu, [], 'Reject time segment', IconLoader.ICON_BAD, [], @(h,ev)bst_call(@RejectTimeSegment));
+        jItem = gui_component('MenuItem', jMenu, [], 'Reject time segment', IconLoader.ICON_BAD, [], @(h,ev)CallWithAccelerator(@RejectTimeSegment));
         jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, 0));
         jMenu.addSeparator();
-        jItem = gui_component('MenuItem', jMenu, [], 'Jump to previous event', IconLoader.ICON_ARROW_LEFT, [], @(h,ev)bst_call(@JumpToEvent, 'leftarrow'));
+        jItem = gui_component('MenuItem', jMenu, [], 'Jump to previous event', IconLoader.ICON_ARROW_LEFT, [], @(h,ev)CallWithAccelerator(@JumpToEvent, 'leftarrow'));
         jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, KeyEvent.SHIFT_MASK));
-        jItem = gui_component('MenuItem', jMenu, [], 'Jump to next event', IconLoader.ICON_ARROW_RIGHT, [], @(h,ev)bst_call(@JumpToEvent, 'rightarrow'));
+        jItem = gui_component('MenuItem', jMenu, [], 'Jump to next event', IconLoader.ICON_ARROW_RIGHT, [], @(h,ev)CallWithAccelerator(@JumpToEvent, 'rightarrow'));
         jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, KeyEvent.SHIFT_MASK));
         % Artifacts
         jMenu = gui_component('Menu', jMenuBar, [], 'Artifacts', IconLoader.ICON_MENU, [], [], 11);
@@ -197,6 +197,7 @@ function bstPanelNew = CreatePanel() %#ok<DEFNU>
         jItemIca     = gui_component('MenuItem', jMenu, [], 'ICA components',  IconLoader.ICON_EMPTY, [], @(h,ev)CallProcessOnRaw('process_ica'));
         jMenu.addSeparator();
         jItemSspSel  = gui_component('MenuItem', jMenu, [], 'Select active projectors', IconLoader.ICON_EMPTY, [], @(h,ev)panel_ssp_selection('OpenRaw'));
+        jItemSspMontage  = gui_component('MenuItem', jMenu, [], 'Load projectors as montages', IconLoader.ICON_EMPTY, [], @(h,ev)panel_montage('AddAutoMontagesProj'));
         
         % === EVENTS TYPES ===
         jListEvtType = JList();
@@ -245,6 +246,7 @@ function bstPanelNew = CreatePanel() %#ok<DEFNU>
                                   'jItemSsp',        jItemSsp, ...
                                   'jItemIca',        jItemIca, ...
                                   'jItemSspSel',     jItemSspSel, ...
+                                  'jItemSspMontage', jItemSspMontage, ...
                                   'jPanelTime',      jPanelTime, ...
                                   'jPanelEvent',     jPanelEvent, ...
                                   'jLabelEpoch',     jLabelEpoch, ...
@@ -370,6 +372,23 @@ function bstPanelNew = CreatePanel() %#ok<DEFNU>
                 JumpToEvent();
             end
         end
+    end
+
+    %% ===== CALL WITH ACCELERATORS =====
+    function CallWithAccelerator(varargin)
+        % Make sure tree items are not being renamed
+        ctrl = bst_get('PanelControls', 'protocols');
+        if isempty(ctrl) || isempty(ctrl.jTreeProtocols) || ctrl.jTreeProtocols.isEditing()
+            return;
+        end
+        % Make sure the item search box is not active
+        ctrl = bst_get('BstControls');
+        if isempty(ctrl) || isempty(ctrl.jTextFilter) || ctrl.jTextFilter.hasFocus()
+            disp('cancel')
+            return;
+        end
+        % Transfer call to bst_call
+        bst_call(varargin{:});
     end
 end
 
@@ -603,11 +622,9 @@ function ValidateTimeWindow(isProgress)
         ctrl.jTextStart.setText(sprintf('%1.4f', Time(iStart)));
     end
     % Save length in user preferences
-    if (smpLength <= length(Time))
-        RawViewerOptions = bst_get('RawViewerOptions');
-        RawViewerOptions.PageDuration = smpLength / sfreq;
-        bst_set('RawViewerOptions', RawViewerOptions);
-    end
+    RawViewerOptions = bst_get('RawViewerOptions');
+    RawViewerOptions.PageDuration = smpLength / sfreq;
+    bst_set('RawViewerOptions', RawViewerOptions);
     % Progress bar
     if isProgress
         bst_progress('start', 'Update display', 'Loading recordings...');
@@ -951,6 +968,7 @@ function UpdatePanel(hFig)
     ctrl.jButtonBaseline.setVisible(isRaw);
     % Enable/disable Artifacts menus
     gui_enable([ctrl.jItemSspEog, ctrl.jItemSspEcg, ctrl.jItemSsp, ctrl.jItemIca, ctrl.jItemSspSel], isRaw);
+    gui_enable(ctrl.jItemSspMontage, ~isRaw);
     gui_enable(ctrl.jItemEegref, isRaw && isEeg);
     % Update display options
     UpdateDisplayOptions(hFig);
@@ -2120,6 +2138,9 @@ end
 % USAGE: [sEvent, iOccur] = EventOccurAdd(iEvent=[selected], channelNames=[])
 function [sEvent, iOccur] = EventOccurAdd(iEvent, channelNames)
     global GlobalData;
+    % Initialize returned variables
+    sEvent = [];
+    iOccur = [];
     % Parse inputs
     if (nargin < 2) || isempty(channelNames) || ~iscell(channelNames)
         channelNames = [];

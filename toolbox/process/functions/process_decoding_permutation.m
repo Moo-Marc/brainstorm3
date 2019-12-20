@@ -174,39 +174,33 @@ function [Accuracy,Time] = contrast_conditions_perm_bs(trial, Time, num_permutat
     nchannels = size(trial{1}{1},1);
 
     % Correct for baseline std
-    %% Might be better to standardize across trials, as MatlabSVM does. Otherwise fails for 1 time point, and LibSVM fails with raw data (too small?).
-    tndx = Time<0; %%
-    if any(tndx)
-        for i = 1:2 %for both groups
-            for j = 1:ntrials
-                trial{i}{j} = trial{i}{j} ./ repmat( std(trial{i}{j}(:,tndx)')',1,ntimes );
-            end
+    tndx = Time<0;
+    for i = 1:2 %for both groups
+        for j = 1:ntrials
+            baseStd = std(trial{i}{j}(:,tndx)')';
+            baseStd(baseStd == 0) = 1; % Avoid division by zero
+            trial{i}{j} = trial{i}{j} ./ repmat(baseStd, 1, ntimes);
         end
     end
 
     % Get labels for train and test groups
     nsamples = floor(ntrials/trial_bin_size);
-    samples = reshape([1:nsamples*trial_bin_size],trial_bin_size,nsamples)'; % [nSamples, BinSize]
+    samples = reshape([1:nsamples*trial_bin_size],trial_bin_size,nsamples)';
     train_label = [ones(1,nsamples-1) 2*ones(1,nsamples-1)];
     test_label = [1 2];
 
     % === Perform decoding ===
     Accuracy = zeros(num_permutations,ntimes);
     % init progress bar
-%     bst_progress('start','permutation-based decoding','Permuting ...',1,num_permutations*ntimes);
+    bst_progress('start','permutation-based decoding','Permuting ...',1,num_permutations*ntimes);
 
-    %% Required if only 1 time point.
-    for i = 1:2 %for both groups
-        trial{i} = trial{i}';
-    end
-    
     for p = 1:num_permutations
         % Randomize samples
-        perm_ndx = randperm(nsamples*trial_bin_size)'; %% transpose needed if only 1 time point
+        perm_ndx = randperm(nsamples*trial_bin_size);
         perm_samples = perm_ndx(samples);
         
         % Create samples
-        train_trialsA = average_structure2(trial{1}(perm_samples(1:nsamples-1,:))); % [nSamples, nChannels, nTimes]
+        train_trialsA = average_structure2(trial{1}(perm_samples(1:nsamples-1,:)));
         train_trialsB = average_structure2(trial{2}(perm_samples(1:nsamples-1,:)));
         train_trials = [train_trialsA;train_trialsB];
 
@@ -216,25 +210,19 @@ function [Accuracy,Time] = contrast_conditions_perm_bs(trial, Time, num_permutat
         test_trials = permute(test_trials,[3 1 2]);
 
         for tndx = 1:ntimes
-%             bst_progress('inc', 1);
+            bst_progress('inc', 1);
             switch (MethodClassif)
                 case 'MatlabSVM'
                     % =It is good practice to standardize the predictors
                     % If you set 'Standardize',true, then the software centers and scales each
                     %column of the predictor data (X) by the column mean and standard deviation, respectively.
                     trainedClassifier = fitcsvm(squeeze(train_trials(:,:,tndx)),train_label,'Standardize',true);
-%                     if perm_ndx(1) == 1
-%                         if trainedClassifier.ConvergenceInfo.Converged
-%                             trainedClassifier.ConvergenceInfo.ReasonForConvergence
-%                         end
-%                         numel(trainedClassifier.Alpha)
-%                     end
                     predictedLabels = predict(trainedClassifier,test_trials(:,:,tndx));
                     Accuracy(p,tndx)= 100*sum(predictedLabels'==test_label)/length(test_label);
 
                 case 'LibSVM'
                     %lib-SVM
-                    model = svmtrain(train_label',train_trials(:,:,tndx),'-s 0 -t 0 -q'); %%
+                    model = svmtrain(train_label',train_trials(:,:,tndx),'-s 0 -t 0 -q');
                     [predicted_label, accuracy, decision_values] = svmpredict(test_label', test_trials(:,:,tndx), model,'-q');
                     Accuracy(p,tndx) = accuracy(1);
 
@@ -246,7 +234,7 @@ function [Accuracy,Time] = contrast_conditions_perm_bs(trial, Time, num_permutat
             end
         end
     end
-%     bst_progress('stop');
+    bst_progress('stop');
 end
 
 
@@ -257,7 +245,7 @@ function Ave = average_structure2(Struct)
     Ave = zeros([size(Struct,1) size(Struct{1})]);
     for i = 1:size(Struct,1)
         for j = 1:size(Struct,2)
-            Ave(i,:,:) = shiftdim(Ave(i,:,:), 1) + Struct{i,j}; %%
+            Ave(i,:,:) = squeeze(Ave(i,:,:)) + Struct{i,j};
         end
     end
     Ave = Ave/size(Struct,2);    
