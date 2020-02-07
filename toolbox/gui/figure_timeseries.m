@@ -20,7 +20,7 @@ function varargout = figure_timeseries( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -34,7 +34,7 @@ function varargout = figure_timeseries( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2019; Martin Cousineau, 2017
+% Authors: Francois Tadel, 2008-2020; Martin Cousineau, 2017
 
 eval(macro_method);
 end
@@ -2649,7 +2649,7 @@ function [F, TsInfo, Std] = GetFigureData(iDS, iFig)
     % Apply montage
     if ~isempty(iChannels)
         F = panel_montage('ApplyMontage', sMontage, Fall(iChannels,:), GlobalData.DataSet(iDS).DataFile, iMatrixDisp, iMatrixChan);
-        if ~isempty(StdAll)
+        if ~isempty(StdAll) && isequal(sMontage.Type, 'selection')
             Std = panel_montage('ApplyMontage', sMontage, StdAll(iChannels,:,:,:), GlobalData.DataSet(iDS).DataFile, iMatrixDisp, iMatrixChan);
         end
         % Modify channel names
@@ -3219,7 +3219,7 @@ function PlotHandles = PlotAxes(iDS, hAxes, PlotHandles, TimeVector, F, TsInfo, 
     % ===== TIME CURSOR =====
     % Plot time cursor (for non-static datasets)
     if (GlobalData.DataSet(iDS).Measures.NumberOfSamples > 2)
-        ZData = 1.6;
+        ZData = 0.5;
         % Get current time
         curTime = GlobalData.UserTimeWindow.CurrentTime;
         YLim = get(hAxes, 'YLim');

@@ -15,7 +15,7 @@ function OutputFiles = import_raw(RawFiles, FileFormat, iSubject, ImportOptions,
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -135,6 +135,10 @@ for iFile = 1:length(RawFiles)
     % Yokogawa non-registered warning
     if ~isempty(errMsg) && ImportOptions.DisplayMessages
         java_dialog('warning', errMsg, 'Open raw EEG/MEG recordings');
+    end
+    % Multiple FIF linked
+    if ImportOptions.DisplayMessages && strcmpi(FileFormat, 'FIF') && isfield(sFile, 'header') && isfield(sFile.header, 'fif_list') && (length(sFile.header.fif_list) >= 2)
+        java_dialog('msgbox', ['Multiple files were linked together:' 10 sprintf('- %s\n', sFile.header.fif_list{:}), 10], 'Open split FIF files');
     end
 
     % ===== OUTPUT STUDY =====

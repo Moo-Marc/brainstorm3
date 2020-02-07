@@ -8,7 +8,7 @@ function [F,TimeVector] = in_fread_fif(sFile, iEpoch, SamplesBounds, iChannels)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -60,7 +60,7 @@ else
         SamplesBounds = [sFile.header.raw.first_samp, sFile.header.raw.last_samp];
     end
     % If there are multiple FIF files: check in which one the data should be read
-    if isfield(sFile.header, 'fif_list') && isfield(sFile.header, 'fif_times') && (length(sFile.header.fif_list) > 2)
+    if isfield(sFile.header, 'fif_list') && isfield(sFile.header, 'fif_times') && (length(sFile.header.fif_list) >= 2)
         % Check if all the samples are gathered from the same file
         fif_samples = round(sFile.header.fif_times .* sFile.prop.sfreq);
         iFile = find((SamplesBounds(1) >= fif_samples(:,1)) & (SamplesBounds(2) <= fif_samples(:,2)));
@@ -76,7 +76,8 @@ else
                 sFile_i = sFile;
                 sFile_i.header = sFile.header.fif_headers{iFile};
                 % Read the samples available in this file
-                SamplesBounds_i = bst_saturate(SamplesBounds, fif_samples(iFile,:), 1);
+                SamplesBounds_i = [max(min(SamplesBounds(1), fif_samples(iFile,2)), fif_samples(iFile,1)), ...
+                                   max(min(SamplesBounds(2), fif_samples(iFile,2)), fif_samples(iFile,1))];
                 [F_i,TimeVector_i] = in_fread_fif(sFile, iEpoch, SamplesBounds_i, iChannels);
                 % Concatenate with previous files
                 F = [F, F_i];

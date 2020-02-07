@@ -8,7 +8,7 @@ function [sAllAtlas, Messages] = import_label(SurfaceFile, LabelFiles, isNewAtla
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -635,6 +635,10 @@ function AtlasName = GetAtlasName(fBase)
             AtlasName = 'Lausanne-S250';
         case {'lh.aparc_HCP_MMP1.freesurfer', 'rh.aparc_HCP_MMP1.freesurfer'}
             AtlasName = 'HCP_MMP1';
+        case {'lh.BN_Atlas', 'rh.BN_Atlas'}
+            AtlasName = 'Braintomme';
+        case {'lh.oasis.chubs', 'rh.oasis.chubs'}
+            AtlasName = 'OASIS cortical hubs';
         otherwise
             % FreeSurfer left/right
             if (length(fBase) > 3) && (strcmpi(fBase(1:3), 'lh.') || strcmpi(fBase(1:3), 'rh.'))

@@ -8,7 +8,7 @@ function varargout = panel_headmodel(varargin)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -22,7 +22,7 @@ function varargout = panel_headmodel(varargin)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2016
+% Authors: Francois Tadel, 2008-2020
 
 eval(macro_method);
 end
@@ -75,6 +75,7 @@ function [bstPanelNew, panelName] = CreatePanel(isMeg, isEeg, isEcog, isSeeg, is
         jComboMethodMEG.addItem(BstListItem('meg_sphere', '', 'Single sphere', []));
         jComboMethodMEG.addItem(BstListItem('os_meg', '', 'Overlapping spheres', []));
         jComboMethodMEG.addItem(BstListItem('openmeeg', '', 'OpenMEEG BEM', []));
+        jComboMethodMEG.addItem(BstListItem('duneuro', '', 'DUNEuro FEM', []));
         jComboMethodMEG.setSelectedIndex(1);
     else
         jCheckMethodMEG = [];
@@ -89,6 +90,7 @@ function [bstPanelNew, panelName] = CreatePanel(isMeg, isEeg, isEcog, isSeeg, is
         jComboMethodEEG = gui_component('ComboBox', jPanelMethod, 'tab hfill', [], [], [], @UpdateComment, []);
         jComboMethodEEG.addItem(BstListItem('eeg_3sphereberg', '', '3-shell sphere', []));
         jComboMethodEEG.addItem(BstListItem('openmeeg', '', 'OpenMEEG BEM', []));
+        jComboMethodEEG.addItem(BstListItem('duneuro', '', 'DUNEuro FEM', []));
         jComboMethodEEG.setSelectedIndex(1);
     else
         jCheckMethodEEG = [];
@@ -391,6 +393,7 @@ function [OutputFiles, errMessage] = ComputeHeadModel(iStudies, sMethod) %#ok<DE
         end
     end
     isOpenMEEG = any(strcmpi(allMethods, 'openmeeg'));
+    isDuneuro = any(strcmpi(allMethods, 'duneuro'));
     % Get protocol description
     ProtocolInfo = bst_get('ProtocolInfo');
 
@@ -640,6 +643,51 @@ function [OutputFiles, errMessage] = ComputeHeadModel(iStudies, sMethod) %#ok<DE
             end
             OPTIONS.BemNames = OPTIONS.BemNames(OPTIONS.BemSelect);
             OPTIONS.BemCond  = OPTIONS.BemCond(OPTIONS.BemSelect);
+        end
+        
+        %% ===== DUNEURO =====
+        if isDuneuro
+            % Ask for the source FEM Model
+            sourceModel = java_dialog('question', '<HTML><B> DUNEuro : Select FEM Source Model <B>', ...
+                'FEM Source Model', [], {'Venant','Subtraction','Partial_Integration'}, 'Venant');
+            OPTIONS.FemSourceModel = lower(sourceModel);
+            % Add the source model name to the comment
+            OPTIONS.Comment = [OPTIONS.Comment ' ' sourceModel] ;
+            
+            % Path to the head fem model
+            OPTIONS.FemHeadFile = file_fullpath(sSubject.Surface(sSubject.iFEM).FileName);            
+            % Get the number of layer and their name
+            headData = load(OPTIONS.FemHeadFile, 'TissueLabels');
+            % Get the default conductivity values
+            defCond = get_standard_conductivity(length(headData.TissueLabels));
+            
+            % Ask for the conductivity of each layer          
+            [res, isCancel] = java_dialog('input', ...
+                ['<HTML>Your FEM head model has three layers: <BR> ' ...
+                 sprintf('%s ', headData.TissueLabels{:}), '<BR><BR>' ...
+                 'Enter the conductivity of each layer: <BR>'], 'Conductivity', [], ...
+                 sprintf('%g ', defCond));
+            if isCancel
+                return
+            end
+            OPTIONS.FemCond = str2num(res);
+            if (length(OPTIONS.FemCond) ~= length(headData.TissueLabels))
+                error('Invalid values');
+            end
+            
+            % TODO : The conductivities values in the case of the
+            % combined model should be the same for eeg and meg
+            
+            % Ask for the layers to keep for the MEG computation
+            if strcmpi(OPTIONS.MEGMethod, 'duneuro')
+                [res, isCancel] = java_dialog('checkbox', ...
+                    '<HTML>Select the layers to consider for the MEG head modeling <BR>', 'Select Volume', [], ...
+                    headData.TissueLabels, [1 zeros(1, length(headData.TissueLabels)-1)]);
+                OPTIONS.layerToKeep =  res;
+                if isCancel
+                    return
+                end
+            end
         end
         
         % ===== Compute HeadModel =====

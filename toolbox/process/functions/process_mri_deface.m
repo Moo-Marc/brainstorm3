@@ -5,7 +5,7 @@ function varargout = process_mri_deface( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -257,7 +257,14 @@ function [DefacedFiles, errMsg] = Compute(MriFiles, OPTIONS)
         end
         % Add comment tag
         sMri.Comment = [sMri.Comment, fileTag];
-
+        
+        % Remove initial file header
+        sMri.Header = [];
+        sMri.Histogram = [];
+        % Remove file history (may contain information in the original file names)
+        sMri.History = [];
+        sMri = bst_history('add', sMri, 'process', ['process_mri_deface: ', OPTIONS.Method]);
+        
         % Save defaced MRI
         bst_progress('text', 'Saving results to database...');
         if OPTIONS.isOverwrite

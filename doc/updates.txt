@@ -1,4 +1,17 @@
 ---------------------------------------------------------------
+February 2020
+- IO: Added support for Localite digitizer (.csv)
+- Anatomy: Update FSAverage template (new import functions + braintomme atlas)
+---------------------------------------------------------------
+January 2020
+- Database: New search interface
+- Anatomy: 3D mesh generation with iso2mesh, SimNIBS, ROAST and FieldTrip
+- Anatomy: Optimized 3D tetrahedral mesh display
+- Anatomy: Added vox2ras matrix to ICBM152 template (world coordinates)
+- Anatomy: Updated USCBrain and BCI-DNI templates (skull, vox2ras, electrodes)
+- IO: Added support for SimNIBS meshes
+- IO: Added support for EmotivPRO EDF recordings
+---------------------------------------------------------------
 December 2019
 - IO: Added support for Wearable Sensing CSV files
 - IO: Added support for split FIF files (> 2Gb)

@@ -5,7 +5,7 @@ function bst_userstat(isSave)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -19,7 +19,7 @@ function bst_userstat(isSave)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2012-2019
+% Authors: Francois Tadel, 2012-2020
 
 % Parse inputs
 if (nargin < 1) || isempty(isSave)
@@ -110,9 +110,9 @@ hFig(end+1) = fig_report(year(1:end-1), nPosts(1:end-1), 0, ...
 
 % ===== PUBLICATIONS =====
 % Hard coded list of publications
-year   = [2000 2001 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2013 2014 2015 2016 2017 2018]; 
-nPubli = [   2    2    1    1    3    5    5   11   10   20   20   32   38   55   78   94  133  214  225];
-nPubliCurYear = 237;
+year   = [2000 2001 2002 2003 2004 2005 2006 2007 2008 2009 2010 2011 2012 2013 2014 2015 2016 2017 2018 2019]; 
+nPubli = [   2    2    1    1    3    5    5   11   10   20   20   32   38   55   78   94  133  214  225  300];
+nPubliCurYear = 14;
 % Plot figure
 hFig(end+1) = fig_report(year, nPubli, 1, ...
            [2000 max(year)], [], ...

@@ -25,7 +25,7 @@ function varargout = figure_3d( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -406,7 +406,8 @@ function FigureMouseMoveCallback(hFig, varargin)
             end
             zoom(hFig, Factor);
             
-        case {'moveSlices', 'popup'}
+        % Popup or move slices
+        case 'popup'
             FigureId = getappdata(hFig, 'FigureId');
             % TOPO: Select channels
             if strcmpi(FigureId.Type, 'Topography') && ismember(FigureId.SubType, {'2DLayout', '2DDisc', '2DSensorCap', '2DElectrodes'})
@@ -3191,45 +3192,35 @@ function UpdateSurfaceAlpha(hFig, iTess)
     end
         
     % ===== RESECT (DOUBLE) =====
-    if isnumeric(Surface.Resect) && (length(Surface.Resect) == 3) && ~all(Surface.Resect == 0)
-        iNoModif = [];
-        % Compute mean and max of the coordinates
-        meanVertx = mean(Vertices, 1);
-        maxVertx  = max(abs(Vertices), [], 1);
-        % Limit values
-        resectVal = Surface.Resect .* maxVertx + meanVertx;
-        % Get vertices that are kept in all the cuts
-        for iCoord = 1:3
-            if Surface.Resect(iCoord) > 0
-                iNoModif = union(iNoModif, find(Vertices(:,iCoord) < resectVal(iCoord)));
-            elseif Surface.Resect(iCoord) < 0
-                iNoModif = union(iNoModif, find(Vertices(:,iCoord) > resectVal(iCoord)));
-            end
-        end
-        % Get all the faces that are partially visible
-        ShowVert = zeros(nbVertices,1);
-        ShowVert(iNoModif) = 1;
-        facesStatus = sum(ShowVert(sSurf.Faces), 2);
-        isFacesVisible = (facesStatus > 0);
-
-        % FEM tetrahedral meshes: Remove the entire tetrahedrons
-        if strcmpi(Surface.Name, 'FEM')
-            % Get hidden faces indices
-            nTetra = size(sSurf.Faces,1) ./ 4;
-            iTetraHidden = unique(mod(find(~isFacesVisible) - 1, nTetra) + 1);
-            % Hide all the 4 faces of each hidden tetrahedron
-            iFacesHidden = [iTetraHidden; iTetraHidden + nTetra; iTetraHidden + 2*nTetra; iTetraHidden + 3*nTetra];
-            isFacesVisible(iFacesHidden) = 0;
-        end
-        
-        % Get the vertices of the faces that are partially visible
-        iVerticesVisible = sSurf.Faces(isFacesVisible,:);
-        iVerticesVisible = unique(iVerticesVisible(:))';
-        % Hide some vertices
-        FaceVertexAlphaData(~isFacesVisible) = 0;
-        
-        % Project vertices for smooth cuts (only for triangles, not for tetrahedral meshes)
+    if isnumeric(Surface.Resect) && (length(Surface.Resect) == 3) && (~all(Surface.Resect == 0) || strcmpi(Surface.Name, 'FEM'))
+        % Regular triangular surface
         if ~strcmpi(Surface.Name, 'FEM')
+            iNoModif = [];
+            % Compute mean and max of the coordinates
+            meanVertx = mean(Vertices, 1);
+            maxVertx  = max(abs(Vertices), [], 1);
+            % Limit values
+            resectVal = Surface.Resect .* maxVertx + meanVertx;
+            % Get vertices that are kept in all the cuts
+            for iCoord = 1:3
+                if Surface.Resect(iCoord) > 0
+                    iNoModif = union(iNoModif, find(Vertices(:,iCoord) < resectVal(iCoord)));
+                elseif Surface.Resect(iCoord) < 0
+                    iNoModif = union(iNoModif, find(Vertices(:,iCoord) > resectVal(iCoord)));
+                end
+            end
+            % Get all the faces that are partially visible
+            ShowVert = zeros(nbVertices,1);
+            ShowVert(iNoModif) = 1;
+            facesStatus = sum(ShowVert(sSurf.Faces), 2);
+            isFacesVisible = (facesStatus > 0);
+
+            % Get the vertices of the faces that are partially visible
+            iVerticesVisible = sSurf.Faces(isFacesVisible,:);
+            iVerticesVisible = unique(iVerticesVisible(:))';
+            % Hide some vertices
+            FaceVertexAlphaData(~isFacesVisible) = 0;
+
             % Get vertices to project
             iVerticesToProject = [iVerticesVisible, tess_scout_swell(iVerticesVisible, VertConn)];
             iVerticesToProject = setdiff(iVerticesToProject, iNoModif);
@@ -3264,20 +3255,24 @@ function UpdateSurfaceAlpha(hFig, iTess)
                 % Update patch
                 set(Surface.hPatch, 'Vertices', Vertices);
             end
+        % FEM tetrahedral meshes: Remove the entire tetrahedrons
+        else
+            % Create a surface for the outside surface of this tissue
+            Elements = get(Surface.hPatch, 'UserData');
+            Faces = tess_voledge(Vertices, Elements, Surface.Resect);
+            % Update patch
+            set(Surface.hPatch, 'Faces', Faces);
         end
-        
-        % Hide edges
-        
     end
     
     % ===== HIDE NON-SELECTED STRUCTURES =====
     % Hide non-selected Structures scouts
     if ~isempty(sSurf.Atlas) && ismember(sSurf.Atlas(sSurf.iAtlas).Name, {'Structures', 'Source model'})
-        % Get scouts display options
-        ScoutsOptions = panel_scout('GetScoutsOptions');
-        % Get selected scouts
-        sScouts = panel_scout('GetSelectedScouts');
-        % Get all the selected vertices
+%         % Get scouts display options
+%         ScoutsOptions = panel_scout('GetScoutsOptions');
+%         % Get selected scouts
+%         sScouts = panel_scout('GetSelectedScouts');
+%         % Get all the selected vertices
 %         if ~isempty(sScouts) && strcmpi(ScoutsOptions.showSelection, 'select')
 %             % Get the list of hidden vertices
 %             iSelVert = unique([sScouts.Vertices]);

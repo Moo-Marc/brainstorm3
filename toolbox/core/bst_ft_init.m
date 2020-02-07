@@ -5,7 +5,7 @@ function isOk = bst_ft_init(isInteractive)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -100,4 +100,10 @@ addpath(fullfile(FieldTripDir, 'forward'));
 addpath(fullfile(FieldTripDir, 'src'));
 addpath(fullfile(FieldTripDir, 'utilities'));
 
-    
+% Remove the ROAST toolbox from the path in order to avoid the error related to spm...
+roastExe = which('roast','-all');
+if ~isempty(roastExe)
+    roastDir = fileparts(roastExe{1});
+    disp(['BST> Removing ROAST from path: ' roastDir]);
+    rmpath(roastDir);
+end

@@ -25,7 +25,7 @@ function [Output, ChannelFile, FileFormat] = import_channel(iStudies, ChannelFil
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -39,7 +39,7 @@ function [Output, ChannelFile, FileFormat] = import_channel(iStudies, ChannelFil
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2019
+% Authors: Francois Tadel, 2008-2020
 
 %% ===== PARSE INPUTS =====
 Output = [];
@@ -214,6 +214,11 @@ switch (FileFormat)
         ChannelMat = in_channel_emse_elp(ChannelFile);
         FileUnits = 'm';
         
+    case 'LOCALITE'
+        ChannelMat = in_channel_ascii(ChannelFile, {'%d','name','X','Y','Z'}, 1, .001);
+        ChannelMat.Comment = 'Localite channels';
+        FileUnits = 'mm';
+                
     case 'NEUROSCAN'  % (*.dat;*.tri;*.txt;*.asc)
         switch (fExt)
             case {'dat', 'txt'}

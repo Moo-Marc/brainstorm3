@@ -25,7 +25,7 @@ function [hFig, iDS, iFig, hPatch, hLight] = view_surface_matrix(Vertices, Faces
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -77,7 +77,10 @@ if (nargin < 7) || isempty(SurfaceFile)
 end
 
 % ===== Create new 3DViz figure =====
-bst_progress('start', 'View surface', 'Loading surface file...');
+isProgress = ~bst_progress('isVisible');
+if isProgress
+    bst_progress('start', 'View surface', 'Loading surface file...');
+end
 if isempty(hFig)
     % Create a new empty DataSet
     iDS = bst_memory('GetDataSetEmpty');
@@ -118,12 +121,13 @@ if ~isempty(sSurf)
     sLoadedSurf.VertNormals = sSurf.VertNormals;
     sLoadedSurf.SulciMap    = sSurf.SulciMap;
 else
-    sLoadedSurf.VertConn = tess_vertconn(Vertices, Faces);
     % Do not compute normals or sulci map for FEM tetrahedral meshes
     if isFem
+        sLoadedSurf.VertConn    = [];
         sLoadedSurf.VertNormals = [];
         sLoadedSurf.SulciMap    = [];
     else
+        sLoadedSurf.VertConn    = tess_vertconn(Vertices, Faces);
         sLoadedSurf.VertNormals = tess_normals(Vertices, Faces, sLoadedSurf.VertConn);
         sLoadedSurf.SulciMap    = tess_sulcimap(sLoadedSurf);
     end
@@ -172,7 +176,9 @@ bst_figures('SetCurrentFigure', hFig, '3D');
 figure_3d('SetStandardView', hFig, 'top');
 % Set figure visible
 set(hFig, 'Visible', 'on');
-bst_progress('stop');
+if isProgress
+    bst_progress('stop');
+end
 % Update "surface" panel
 panel_surface('UpdatePanel');
 

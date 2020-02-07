@@ -36,7 +36,7 @@ function [OutputFiles, Messages, isError] = bst_timefreq(Data, OPTIONS)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -122,6 +122,11 @@ isAddedCommentNorm = 0;
 % Cannot do average and "save kernel" at the same time
 if isAverage && OPTIONS.SaveKernel
     Messages = 'Incompatible options: 1)Keep the inversion kernel and 2)average trials';
+    isError = 1;
+    return;
+% Cannot use option "save kernel" with continuous raw files
+elseif OPTIONS.SaveKernel && ischar(Data{1}) && any(~cellfun(@(c)isempty(strfind(c, '@raw')), Data))
+    Messages = 'Cannot use the optimization option "save the inversion kernel" with continuous raw files.';
     isError = 1;
     return;
 end

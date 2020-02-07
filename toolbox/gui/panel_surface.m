@@ -19,7 +19,7 @@ function varargout = panel_surface(varargin)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -260,21 +260,31 @@ function bstPanelNew = CreatePanel() %#ok<DEFNU>
         jSliderResectX.setValue(0);
         jSliderResectY.setValue(0);
         jSliderResectZ.setValue(0);
-        SliderCallback([], MouseEvent(jSliderResectX, 0, 0, 0, 0, 0, 1, 0), 'ResectX');
-        SliderCallback([], MouseEvent(jSliderResectY, 0, 0, 0, 0, 0, 1, 0), 'ResectY');
-        SliderCallback([], MouseEvent(jSliderResectZ, 0, 0, 0, 0, 0, 1, 0), 'ResectZ');
-        % Redraw all the scouts (for surfaces only)
+        
+        % Get handle to current 3DViz figure
         hFig = bst_figures('GetCurrentFigure', '3D');
-        if ~isempty(hFig)
-            iSurface = getappdata(hFig, 'iSurface');
-            TessInfo = getappdata(hFig, 'Surface');
-            if ~isempty(iSurface) && ~isempty(TessInfo) && (iSurface > length(TessInfo))
-                isAnatomy = strcmpi(TessInfo(iSurface).Name, 'Anatomy');
-                if ~isAnatomy
-                    panel_scout('ReloadScouts', hFig);
-                end
-            end
+        if isempty(hFig)
+            return
         end
+        % Get current surface
+        iSurface = getappdata(hFig, 'iSurface');
+        TessInfo = getappdata(hFig, 'Surface');
+        if isempty(iSurface) || isempty(TessInfo)
+            return;
+        end
+        % MRI: Redraw 3 orientations
+        if strcmpi(TessInfo(iSurface).Name, 'Anatomy')
+            SliderCallback([], MouseEvent(jSliderResectX, 0, 0, 0, 0, 0, 1, 0), 'ResectX');
+            SliderCallback([], MouseEvent(jSliderResectY, 0, 0, 0, 0, 0, 1, 0), 'ResectY');
+            SliderCallback([], MouseEvent(jSliderResectZ, 0, 0, 0, 0, 0, 1, 0), 'ResectZ');
+        % Surface: Call the update function only once
+        else
+            TessInfo(iSurface).Resect = 'none';
+            setappdata(hFig, 'Surface', TessInfo);
+            SliderCallback([], MouseEvent(jSliderResectX, 0, 0, 0, 0, 0, 1, 0), 'ResectX');
+        end
+        % Redraw all the scouts (for surfaces only)
+        % panel_scout('ReloadScouts', hFig);
     end
 
     %% ===== RESECT LEFT TOGGLE CALLBACK =====
@@ -620,6 +630,10 @@ function ResectSurface(hFig, iSurf, resectDim, resectValue)
     % If updating FEM mesh, update all layers
     if strcmpi(TessInfo(iSurf).Name, 'FEM')
         iSurf = find(strcmpi({TessInfo.Name}, 'FEM'));
+        bst_progress('start', 'Resect surface', 'Resecting...', 0, length(iSurf)+1);
+        isProgress = 1;
+    else
+        isProgress = 0;
     end
     % Update all selected surfaces
     for i = 1:length(iSurf)
@@ -635,6 +649,10 @@ function ResectSurface(hFig, iSurf, resectDim, resectValue)
     setappdata(hFig, 'Surface', TessInfo);
     % Hide trimmed part of the surface
     for i = 1:length(iSurf)
+        if isProgress
+            bst_progress('text', ['Resecting: ', TessInfo(iSurf(i)).SurfaceFile, '...']);
+            bst_progress('inc', 1);
+        end
         figure_callback(hFig, 'UpdateSurfaceAlpha', hFig, iSurf(i));
     end
     % Deselect both Left and Right buttons
@@ -642,6 +660,13 @@ function ResectSurface(hFig, iSurf, resectDim, resectValue)
     ctrl.jToggleResectLeft.setSelected(0);
     ctrl.jToggleResectRight.setSelected(0);
     ctrl.jToggleResectStruct.setSelected(0);
+    % Close progress bar
+    if isProgress
+        bst_progress('text', 'Updating figure...');
+        bst_progress('inc', 1);
+        drawnow
+        bst_progress('stop');
+    end
 end
 
 
@@ -1710,16 +1735,25 @@ function TessInfo = ComputeScalpInterpolation(iDS, iFig, TessInfo)
     if isempty(TessInfo.DataWmat) || ...
             (size(TessInfo.DataWmat,2) ~= length(selChan)) || ...
             (size(TessInfo.DataWmat,1) ~= length(Vertices))
-        switch lower(GlobalData.DataSet(iDS).Figure(iFig).Id.Modality)
-            case 'eeg',       excludeParam = .3;
-            case 'ecog',      excludeParam = -.015;
-            case 'seeg',      excludeParam = -.015;
-            case 'ecog+seeg', excludeParam = -.015;
-            case 'meg',       excludeParam = .5;
-            otherwise,        excludeParam = 0;
+        % EEG: Use smoothed display, as in 2D/3D topography
+        if strcmpi(GlobalData.DataSet(iDS).Figure(iFig).Id.Modality, 'eeg')
+            TopoInfo.UseSmoothing = 1;
+            TopoInfo.Modality = GlobalData.DataSet(iDS).Figure(iFig).Id.Modality;
+            Faces = get(TessInfo.hPatch, 'Faces');
+            [bfs_center, bfs_radius] = bst_bfs(Vertices);
+            TessInfo.DataWmat = figure_topo('GetInterpolation', iDS, iFig, TopoInfo, Vertices, Faces, bfs_center, bfs_radius, chan_loc);
+        else
+            switch lower(GlobalData.DataSet(iDS).Figure(iFig).Id.Modality)
+                case 'eeg',       excludeParam = .3;
+                case 'ecog',      excludeParam = -.015;
+                case 'seeg',      excludeParam = -.015;
+                case 'ecog+seeg', excludeParam = -.015;
+                case 'meg',       excludeParam = .5;
+                otherwise,        excludeParam = 0;
+            end
+            nbNeigh = 4;
+            TessInfo.DataWmat = bst_shepards(Vertices, chan_loc, nbNeigh, excludeParam);
         end
-        nbNeigh = 4;
-        TessInfo.DataWmat = bst_shepards(Vertices, chan_loc, nbNeigh, excludeParam);
     end
     % Set data for current time frame
     TessInfo.Data = TessInfo.DataWmat * TessInfo.Data;

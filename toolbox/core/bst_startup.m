@@ -12,7 +12,7 @@ function bst_startup(BrainstormHomeDir, GuiLevel, BrainstormDbDir)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -242,6 +242,11 @@ if ~isempty(bstOptions)
     if isfield(bstOptions, 'Pipelines') && isstruct(bstOptions.Pipelines) && ...
             all(isfield(bstOptions.Pipelines, {'Name', 'Processes'}))
        GlobalData.Processes.Pipelines = bstOptions.Pipelines;
+    end
+    % Get saved searches
+    if isfield(bstOptions, 'Searches') && isstruct(bstOptions.Searches) && ...
+            all(isfield(bstOptions.Searches, {'Name', 'Search'}))
+       GlobalData.DataBase.Searches.All = bstOptions.Searches;
     end
     % Reset current search filter
     if isfield(GlobalData.Preferences, 'NodelistOptions') && isfield(GlobalData.Preferences.NodelistOptions, 'String') && ~isempty(GlobalData.Preferences.NodelistOptions.String)

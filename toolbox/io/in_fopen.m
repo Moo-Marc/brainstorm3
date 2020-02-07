@@ -19,7 +19,7 @@ function [sFile, ChannelMat, errMsg, DataMat, ImportOptions] = in_fopen(DataFile
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -66,6 +66,11 @@ switch (FileFormat)
     % ===== SUPPORTED AS CONTINUOUS FILES =====
     case 'FIF'
         [sFile, ChannelMat] = in_fopen_fif(DataFile, ImportOptions);
+        % Multiple FIF linked: add number of files to the folder name in the database
+        if strcmpi(FileFormat, 'FIF') && isfield(sFile, 'header') && isfield(sFile.header, 'fif_list') && (length(sFile.header.fif_list) >= 2)
+            [fPath,fBase] = bst_fileparts(DataFile);
+            sFile.condition = sprintf('%s_(%d)', fBase, length(sFile.header.fif_list));
+        end
     case {'CTF', 'CTF-CONTINUOUS'}
         [sFile, ChannelMat] = in_fopen_ctf(DataFile);
     case '4D'
@@ -100,6 +105,8 @@ switch (FileFormat)
         [sFile, ChannelMat] = in_fopen_eeglab(DataFile, ImportOptions);
     case 'EEG-EGI-RAW'
         sFile = in_fopen_egi(DataFile, [], [], ImportOptions);
+    case 'EEG-EMOTIV'
+        [sFile, ChannelMat] = in_fopen_emotiv(DataFile);
     case 'EEG-GTEC'
         [sFile, ChannelMat] = in_fopen_gtec(DataFile);
     case 'EEG-MANSCAN'

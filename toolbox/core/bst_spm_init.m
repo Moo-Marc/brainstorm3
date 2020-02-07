@@ -5,7 +5,7 @@ function isOk = bst_spm_init(isInteractive, SpmFunction)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2019 University of Southern California & McGill University
+% Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -19,8 +19,9 @@ function isOk = bst_spm_init(isInteractive, SpmFunction)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2017-2019
+% Authors: Francois Tadel, 2017-2020
 
+isOk = 0;
 % Deployed: Code already included in the compiled version
 if exist('isdeployed', 'builtin') && isdeployed
     isOk = 1;
@@ -39,14 +40,18 @@ SpmDir = bst_get('SpmDir');
 if ~isempty(SpmDir) && ~isInteractive
     disp(['BST> SPM install: ' SpmDir]);
 end
-% % Check if SPM is already initialized
-% if exist('spm', 'file')
-%     isOk = 1;
-%     return;
-% end
-isOk = 0;
+
+% Check if SPM is already initialized, but in the wrong place (eg. FieldTrip folder)
+if exist('spm.m', 'file') && ~file_compare(bst_fileparts(which('spm')), SpmDir)
+    wrongPaths = intersect(str_split(path,';'), str_split(genpath(bst_fileparts(which('spm'))),';'));
+    for iPath = 1:length(wrongPaths)
+        disp(['SPM> Removed conflicting folder from path: ' wrongPaths{iPath}]);
+        rmpath(wrongPaths{iPath});
+    end
+end
+
 % If SPM is not accessible in the path
-if ~exist('spm.m', 'file')
+if ~exist('spm_jobman.m', 'file')
     % If defined, add to the folder
     if ~isempty(SpmDir)
         addpath(SpmDir);
