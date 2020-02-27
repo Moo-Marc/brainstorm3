@@ -1173,9 +1173,9 @@ switch (lower(action))
             case 'fem'
                 iSubject = bstNodes(1).getStudyIndex();
                 % Display
-                gui_component('MenuItem', jPopup, [], 'Display', IconLoader.ICON_DISPLAY, [], @(h,ev)view_surface_fem(filenameRelative));
+                gui_component('MenuItem', jPopup, [], 'Display', IconLoader.ICON_DISPLAY, [], @(h,ev)view_surface_fem(filenameRelative, [], [], [], 'NewFigure'));
                 % Extract surfaces
-                gui_component('MenuItem', jPopup, [], 'Extract surfaces', IconLoader.ICON_FEM, [], @(h,ev)bst_call(@import_femlayers, iSubject, filenameFull, 'BSTFEM'));
+                gui_component('MenuItem', jPopup, [], 'Extract surfaces', IconLoader.ICON_FEM, [], @(h,ev)bst_call(@import_femlayers, iSubject, filenameFull, 'BSTFEM', 1));
                 
                 
 %% ===== POPUP: NOISECOV =====
@@ -2995,13 +2995,18 @@ end
 %% ===== EXTRACT ENVELOPE =====
 function SurfaceEnvelope_Callback(TessFile)
     % Ask user the new number of vertices
-    res = java_dialog('input', {'Number of vertices:', 'Dilate factor: (negative value for erosion)'}, 'Extract envelope', [], {'5000', '1'});
+    res = java_dialog('input', {'Number of vertices: (max 10000)', 'Dilate factor: (negative value for erosion)'}, 'Extract envelope', [], {'5000', '1'});
     if isempty(res) || (length(res) < 2) || isnan(str2double(res{1})) || isnan(str2double(res{2}))
         return
     end
     % Read user input
     newNbVertices = str2double(res{1});
     dilateMask = str2double(res{2});
+    % Validate user input
+    if newNbVertices > 10000
+        java_dialog('error', 'You cannot extract an envelope greater than 10000 vertices.', 'Extract envelope');
+        return
+    end
     % Progress bar
     bst_progress('start', 'Cortex envelope', 'Extracting envelope...');
     % Compute surface based on MRI mask

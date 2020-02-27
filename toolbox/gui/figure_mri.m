@@ -75,6 +75,7 @@ function [hFig, Handles] = CreateFigure(FigureId) %#ok<DEFNU>
         'DockControls',  'off', ...
         'Units',         'pixels', ...
         'Color',         [0 0 0], ...
+        'Pointer',       'arrow', ...
         'Tag',           FigureId.Type, ...
         'Renderer',      rendererName, ...
         'BusyAction',    'cancel', ...
@@ -1061,8 +1062,8 @@ function [hImgMri, hCrossH, hCrossV] = SetupView(hAxes, xySize, imgSize, orientL
     % MRI image
     hImgMri = findobj(hAxes, '-depth', 1, 'Tag', 'ImageMriSlice');
     if isempty(hImgMri) && ~isempty(imgSize)
-        hImgMri = image('XData',        [1, xySize(1)], ...
-                        'YData',        [1, xySize(2)], ...
+        hImgMri = image('XData',        [xySize(1)./imgSize(2), xySize(1)], ...
+                        'YData',        [xySize(2)./imgSize(1), xySize(2)], ...
                         'CData',        zeros(imgSize(1), imgSize(2)), ...
                         'CDataMapping', 'scaled', ...
                         'Parent',       hAxes, ...
@@ -1071,9 +1072,13 @@ function [hImgMri, hCrossH, hCrossV] = SetupView(hAxes, xySize, imgSize, orientL
     
     % Get axes dimensions
     AxesPos = get(hAxes, 'Position');
-    % Get default axis limits
-    XLim = [0 xySize(1)] + 0.5;
-    YLim = [0 xySize(2)] + 0.5;
+    % Get default axis limits (first voxel = .5,.5,.5)
+    XLim = [0 xySize(1)];
+    YLim = [0 xySize(2)];
+    if ~isempty(imgSize)
+    	XLim = XLim + 0.5 * xySize(1)./imgSize(2);
+        XLim = XLim + 0.5 * xySize(2)./imgSize(1);
+    end
     % Adapt display to the limiting axis (for full width display when zooming in)
     Xr = xySize(1) / AxesPos(3);
     Yr = xySize(2) / AxesPos(4);
@@ -1099,12 +1104,14 @@ function [hImgMri, hCrossH, hCrossV] = SetupView(hAxes, xySize, imgSize, orientL
     if ~isempty(orientLabels)
         hLabelOrientL = findobj(hAxes, '-depth', 1, 'Tag', 'LabelOrientL');
         hLabelOrientR = findobj(hAxes, '-depth', 1, 'Tag', 'LabelOrientR');
-        posL = [XLim(1) + .05*(XLim(2)-XLim(1)), YLim(1) + .05*(YLim(2)-YLim(1)), 0];
-        posR = [XLim(1) + .95*(XLim(2)-XLim(1)), YLim(1) + .05*(YLim(2)-YLim(1)), 0];
+        % posL = [XLim(1) + .05*(XLim(2)-XLim(1)), YLim(1) + .05*(YLim(2)-YLim(1)), 0];
+        % posR = [XLim(1) + .95*(XLim(2)-XLim(1)), YLim(1) + .05*(YLim(2)-YLim(1)), 0];
+        posL = [0, 0];
+        posR = [xySize(1), 0];
         if isempty(hLabelOrientL) || isempty(hLabelOrientR)
             fontSize = bst_get('FigFont');
-            text(posL(1), posL(2), orientLabels{1}, 'verticalalignment', 'top', 'FontSize', fontSize, 'FontUnits', 'points', 'color','w', 'Parent', hAxes, 'Tag', 'LabelOrientL');
-            text(posR(1), posR(2), orientLabels{2}, 'verticalalignment', 'top', 'FontSize', fontSize, 'FontUnits', 'points', 'color','w', 'Parent', hAxes, 'Tag', 'LabelOrientR');
+            text(posL(1), posL(2), orientLabels{1}, 'verticalalignment', 'bottom', 'HorizontalAlignment', 'right', 'FontSize', fontSize, 'FontUnits', 'points', 'color','w', 'Parent', hAxes, 'Tag', 'LabelOrientL');
+            text(posR(1), posR(2), orientLabels{2}, 'verticalalignment', 'bottom', 'HorizontalAlignment', 'left', 'FontSize', fontSize, 'FontUnits', 'points', 'color','w', 'Parent', hAxes, 'Tag', 'LabelOrientR');
         else
             set(hLabelOrientL, 'Position', posL);
             set(hLabelOrientR, 'Position', posR);
