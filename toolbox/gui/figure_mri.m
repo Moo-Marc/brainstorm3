@@ -1540,6 +1540,9 @@ function MouseButtonUp_Callback(hFig, varargin)
                     Handles = bst_figures('GetFigureHandles', hFig);
                     sMri = panel_surface('GetSurfaceMri', hFig);
                     MouseMoveCrosshair(hAxes, sMri, Handles);
+                    % Select channel
+                    ChannelName = get(clickSource, 'UserData');
+                    bst_figures('ToggleSelectedRow', ChannelName);
             end
         % Mouse was moved
         else
@@ -2241,7 +2244,9 @@ function UpdateVisibleSensors3D(hFig, slicesToUpdate)
                 % Convert positions to MRI coordinates
                 ChanMri = cs_convert(sMri, 'scs', 'mri', ChanLoc) .* 1000;
                 % Is there any point close to the current slices
-                if any(abs(ChanMri(:,iDim) - slicesLoc(iDim)) <= nTol)
+                % if any(abs(ChanMri(:,iDim) - slicesLoc(iDim)) <= nTol)
+                % Is the slice between the first and the last contact of this electrode
+                if (slicesLoc(iDim) >= min(ChanMri(:,iDim)) - nTol) && (slicesLoc(iDim) <= max(ChanMri(:,iDim)) + nTol)
                     Visible = 'on';
                 else
                     Visible = 'off';

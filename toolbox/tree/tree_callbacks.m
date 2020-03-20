@@ -578,10 +578,10 @@ switch (lower(action))
                         jItem.setEnabled(0);
                     end
                     % === GENERATE BEM ===
-                    jItemBem = gui_component('MenuItem', jPopup, [], 'Generate BEM surfaces', IconLoader.ICON_ANATOMY, [], @(h,ev)tess_bem(iSubject));
+                    jItemBem = gui_component('MenuItem', jPopup, [], 'Generate BEM surfaces', IconLoader.ICON_ANATOMY, [], @(h,ev)process_generate_bem('ComputeInteractive', iSubject, []));
                     jItemFem = gui_component('MenuItem', jPopup, [], 'Generate FEM mesh', IconLoader.ICON_FEM, [], @(h,ev)process_generate_fem('ComputeInteractive', iSubject, []));
                     % Disable if no scalp or cortex available
-                    if isempty(sSubject.iCortex) || isempty(sSubject.iScalp) || isempty(sSubject.Anatomy)
+                    if isempty(sSubject.Anatomy)
                         jItemBem.setEnabled(0);
                     end
                     if isempty(sSubject.iScalp) && isempty(sSubject.Anatomy)
@@ -1020,6 +1020,7 @@ switch (lower(action))
                     AddSeparator(jPopup);
                     if (length(bstNodes) == 1)
                         gui_component('MenuItem', jPopup, [], 'Generate head surface', IconLoader.ICON_SURFACE_SCALP, [], @(h,ev)tess_isohead(filenameRelative));
+                        gui_component('MenuItem', jPopup, [], 'Generate BEM surfaces', IconLoader.ICON_ANATOMY, [], @(h,ev)process_generate_bem('ComputeInteractive', iSubject, iAnatomy));
                     end
                     if (length(bstNodes) <= 2)
                         gui_component('MenuItem', jPopup, [], 'Generate FEM mesh', IconLoader.ICON_FEM, [], @(h,ev)process_generate_fem('ComputeInteractive', iSubject, iAnatomy));
@@ -1036,7 +1037,7 @@ switch (lower(action))
                 % === MENU: EXPORT ===
                 % Export menu (added later)
                 if (length(bstNodes) == 1)
-                    jMenuExport = gui_component('MenuItem', [], [], 'Export to file', IconLoader.ICON_SAVE, [], @(h,ev)export_mri(filenameFull));
+                    jMenuExport = gui_component('MenuItem', [], [], 'Export to file', IconLoader.ICON_SAVE, [], @(h,ev)bst_call(@export_mri, filenameFull));
                 end
 
 %% ===== POPUP: SURFACE =====
@@ -1245,6 +1246,7 @@ switch (lower(action))
                     [sSubject, iSubject] = bst_get('Subject', sStudy.BrainStormSubject);
                     gui_component('MenuItem', jPopup, [], 'Check spheres', IconLoader.ICON_HEADMODEL, [], @(h,ev)view_spheres(filenameFull, ChannelFile, sSubject));
                 end
+                
                 % === CHECK SOURCE GRID ===
                 if strcmpi(sStudy.HeadModel(iHeadModel).HeadModelType, 'volume') 
                     if ~bst_get('ReadOnly') && ~isSepGain
@@ -1257,6 +1259,9 @@ switch (lower(action))
                     end
                     gui_component('MenuItem', jPopup, [], 'Check source grid (volume)', IconLoader.ICON_HEADMODEL, [], @(h,ev)view_gridloc(filenameFull, 'V'));
                     gui_component('MenuItem', jPopup, [], 'Check source grid (surface)', IconLoader.ICON_HEADMODEL, [], @(h,ev)view_gridloc(filenameFull, 'S'));
+                end
+                if isempty(strfind(filenameRelative, 'headmodel_grid_'))
+                    gui_component('MenuItem', jPopup, [], 'View lead field vectors', IconLoader.ICON_RESULTS, [], @(h,ev)bst_call(@view_leadfields, GetAllFilenames(bstNodes))); 
                 end
                 % Copy to other conditions/subjects 
                 if ~bst_get('ReadOnly')
