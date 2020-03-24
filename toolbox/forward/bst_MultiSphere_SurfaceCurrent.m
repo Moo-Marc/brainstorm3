@@ -64,11 +64,11 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
 %   Options = [1, 2, 1, -2]; % Bst_os
 %   Options = [1, 2, 0, 1]; % NC2
 %   Options = [1, 1, 0, 1]; % NC
-  Options = [2, 1, 0, 1]; % TC
-  WeightType = Options(1);
-  DistanceType = Options(2);
-  EqualdA = Options(3);
-  WeightPower = Options(4);
+%   Options = [2, 1, 0, 1]; % TC
+  WeightType = 1; %Options(1);
+  DistanceType = 2; %Options(2);
+  EqualdA = 0; %Options(3);
+  WeightPower = 1; %Options(4);
   % WeightType: 1: Normal current (BrainStorm), 2: Tangential current
   % DistanceType: 1: Distance, 2: Square distance, 3: Radius-free distance,
   %   4: Square R-free distance.
@@ -108,7 +108,7 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
 
   % Preallocate the multi-sphere structure array.
   nChan = numel(Channel);
-  Sphere(nChan) = InitialSphere;
+  Sphere(1:nChan) = InitialSphere;
 
   bst_progress('start', 'Head modeler', 'Multiple spheres...', 0, nChan);
   
@@ -160,60 +160,72 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
       % Decreasing the tolerances made it unneccessary in all cases.
       % Optimization function
       if exist('fminunc', 'file')
-          OptimFun = @fminunc;
-          Opt = optimoptions(@fminunc, 'MaxFunctionEvaluations', 5e3, 'MaxIterations', 1e3, 'FunctionTolerance', 1e-9, 'OptimalityTolerance', 1e-15, 'StepTolerance', 1e-6, 'Display', 'off');
-          % OptimalityTolerance decreases really fast.  Must set very low
+          OptimFunc = @fminunc;
+          Opt = optimoptions(@fminunc, 'MaxFunctionEvaluations', 5e4, 'MaxIterations', 1e4, 'FunctionTolerance', 1e-24, ...
+              'OptimalityTolerance', 1e-25, 'StepTolerance', 1e-12, 'Display', 'off');
+          % Not sure why but now always stops because "can't decrease the objective function".
+          %           Opt = optimoptions(@fminunc, 'MaxFunctionEvaluations', 5e3, 'MaxIterations', 1e3, 'FunctionTolerance', 1e-9, ...
+          %               'OptimalityTolerance', 1e-15, 'StepTolerance', 1e-6, 'Display', 'off');
+          % Optimality decreases really fast.  Must set very low
           % so that the step tolerance is reached.  Still typically about
           % 10 iterations.
       else
-          OptimFun = @fminsearch;
-          Opt = optimset('MaxFunEvals', 5e3, 'MaxIter', 1e3, 'TolFun', 1e-9, 'TolX', 1e-6, 'Display', 'off');
+          OptimFunc = @fminsearch;
+          Opt = optimset('MaxFunEvals', 5e4, 'MaxIter', 1e4, 'TolFun', 1e-24, 'TolX', 1e-12, 'Display', 'off');
       end
       switch DistanceType
           case 1
               % Distance between shape point and sphere.
-              Sphere(c).Center = OptimFun(@WMeanDistance, InitialSphere.Center, Opt);
+              CostFunc = @(C) WMeanDistance(C, Weights, Vertices);
+              Sphere(c).Center = OptimFunc(CostFunc, Sphere(c).Center, Opt);
+              %Sphere(c).Center = OptimFun(@WMeanDistance, Sphere(c).Center, Opt);
               Sphere(c).Radius = WeightedMedian( sqrt(sum( ...
                   bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2)), Weights );
               
           case 2
               % Square distance between shape point and sphere.
-              Sphere(c).Center = OptimFun(@WMeanSquareDistance, InitialSphere.Center, Opt);
+              CostFunc = @(C) WMeanSquareDistance(C, Weights, Vertices, WeightPower);
+              Sphere(c).Center = OptimFunc(CostFunc, Sphere(c).Center, Opt);
+              %Sphere(c).Center = OptimFun(@WMeanSquareDistance, Sphere(c).Center, Opt);
               Sphere(c).Radius = Weights' * sqrt(sum( ...
                   bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2));
               %               if c == 27
-              %                   TmpCenter = fminsearch(@bst_os_fmins, InitialSphere.Center, Opt, Weights, Vertices);
+              %                   TmpCenter = fminsearch(@bst_os_fmins, Sphere(c).Center, Opt, Weights, Vertices);
               %                   keyboard;
               %               end
               
           case 3
               % Distance between sphere center and line along shape surface normal.
               % No radius involved, use same as case 0.
-              Sphere(c).Center = OptimFun(@WMNormalDistance, InitialSphere.Center, Opt);
+              CostFunc = @(C) WMNormalDistance(C, Weights, Vertices, dA);
+              Sphere(c).Center = OptimFunc(CostFunc, Sphere(c).Center, Opt);
+              %Sphere(c).Center = OptimFun(@WMNormalDistance, Sphere(c).Center, Opt);
               Sphere(c).Radius = WeightedMedian( sqrt(sum( ...
                   bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2)), Weights );
               
           case 4
               % Square distance between sphere center and line along shape surface
               % normal.  No radius involved, use same as case 1.
-              Sphere(c).Center = OptimFun(@WMSquareNormalDistance, InitialSphere.Center, Opt);
+              CostFunc = @(C) WMSquareNormalDistance(C, Weights, Vertices, dA);
+              Sphere(c).Center = OptimFunc(CostFunc, Sphere(c).Center, Opt);
+              %Sphere(c).Center = OptimFun(@WMSquareNormalDistance, Sphere(c).Center, Opt);
               Sphere(c).Radius = Weights' * sqrt(sum( ...
                   bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2));
       end
 
       % Check for invalid sphere.
       if norm(Sphere(c).Center - SensorSphere.Center) > SensorSphere.Radius %#ok<*PFBNS>
-          warning('Sphere center for reference %1.0f, method %1.0f is outside the single sphere.', ...
+          warning('Sphere center for sensor %d is outside the single sphere.', ...
               c);
       end
-      if Sphere(c).Radius < 0.01 % 1 cm
-          warning('Bad convergence with small radius for ref. %1.0f, method %1.0f.', ...
-              c);
+      if Sphere(c).Radius < 0.001 % 1 mm (made smaller for rat skull)
+          warning('Bad convergence with small radius for sensor %d.', c);
       end
       
   end % Channel loop
 
   
+end
   
 
   % -----------------------------------------------------------------------
@@ -222,7 +234,7 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   %   function D = TEST(CenterR) %#ok<DEFNU>
   %     Center = CenterR(1:3);
   %     R = CenterR(4);
-  %     Dist = sqrt(sum( (Vertices - Center(ones(nV, 1), :)).^2 , 2));
+  %     Dist = sqrt(sum( bsxfun(@minus, Vertices, Sphere(c).Center').^2 , 2));
   %     %R = WeightedMean(sqrt(SquareDist), Weights);
   %     D = Weights' * abs(Dist-R);
   %   end
@@ -232,7 +244,7 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   % sphere which is centered at the provided point.  The radius that
   % minimizes that distance is the median (not mean!) distance between the
   % center and points. So no need to search for it. 
-  function D = WMeanDistance(Center)
+  function D = WMeanDistance(Center, Weights, Vertices)
     Distances = sqrt(sum( bsxfun(@minus, Vertices, Center').^2 , 2));
     R = WeightedMedian(Distances, Weights);
     D = Weights' * abs(Distances - R);
@@ -243,7 +255,7 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   % the sphere which is centered at the provided point.  The radius that
   % minimizes that distance is the mean distance between the center and
   % points. So no need to search for it.
-  function D = WMeanSquareDistance(Center)
+  function D = WMeanSquareDistance(Center, Weights, Vertices, WeightPower)
       if WeightPower < 0 
           % Apply weight power after computing radius.
           Distances = sqrt(sum( bsxfun(@minus, Vertices, Center').^2 , 2));
@@ -260,7 +272,7 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   % -----------------------------------------------------------------------
   % Calculate the mean distance between the provided sphere center
   % and the lines normal to the surface vertices.  Radius-free method.
-  function D = WMNormalDistance(Center)
+  function D = WMNormalDistance(Center, Weights, Vertices, dA)
     CtoV = bsxfun(@minus, Vertices, Center');
     Distances = sqrt(sum(CtoV.^2, 2) - ...
       (CtoV(:, 1) .* dA(:, 1) + CtoV(:, 2) .* dA(:, 2) + CtoV(:, 3) .* dA(:, 3)).^2 );
@@ -270,14 +282,13 @@ function [Sphere, Weights] = bst_MultiSphere_SurfaceCurrent(Channel, Vertices, F
   % -----------------------------------------------------------------------
   % Calculate the mean distance between the provided sphere center
   % and the lines normal to the surface vertices.  Radius-free method.
-  function D = WMSquareNormalDistance(Center)
+  function D = WMSquareNormalDistance(Center, Weights, Vertices, dA)
     CtoV = bsxfun(@minus, Vertices, Center');
     SquareDist = sum(CtoV.^2, 2) - ...
       (CtoV(:, 1) .* dA(:, 1) + CtoV(:, 2) .* dA(:, 2) + CtoV(:, 3) .* dA(:, 3)).^2 ;
     D = Weights' * SquareDist;
   end
   
-end
 
 
 function WM = WeightedMedian(List, Weights)
@@ -318,43 +329,45 @@ function WM = WeightedMedian(List, Weights)
   % (partial) point. Otherwise, as in the median, it is anywhere in
   % between the middle two (partial) points.
   
-  if ~isvector(List)
-    error('WeightedMedian requires a vector.')
-  elseif ~exist('Weights', 'var') || length(Weights) == 1
-    % warning('No weights or equal weights: using regular median.');
-    WM = median(List);
-    return
-  elseif size(Weights) ~= size(List)
-    error('Weights and List sizes don''t match.')
-  elseif any(Weights < 0)
-    error('Negative weights are not allowed.')
-  end
+  %   if ~isvector(List)
+  %     error('WeightedMedian requires a vector.')
+  %   elseif nargin < 2 || numel(Weights) == 1
+  %     % warning('No weights or equal weights: using regular median.');
+  %     WM = median(List);
+  %     return;
+  %   elseif size(Weights) ~= size(List)
+  %     error('Weights and List sizes don''t match.')
+  %   elseif any(Weights < 0)
+  %     error('Negative weights are not allowed.')
+  %   end
   
   % First sort the list and weights.
   [List, Order] = sort(List);
   Weights = Weights(Order);
   % n = length(List);
   
-  Total = sum(Weights); % Weights might not be normalized.
-  if Total == 0
-    warning('All weights = 0, median undetermined.');
-    WM = NaN;
-    return
-  end
+  WeightSum = cumsum(Weights);
+  %   Total = sum(Weights); % Weights might not be normalized.
+%   if WeightSum(end) == 0
+%     warning('All weights = 0, median undetermined.');
+%     WM = NaN;
+%     return
+%   end
   
-  PartialSum = 0;
-  w = 0;
-  while PartialSum < Total/2
-    w = w + 1;
-    PartialSum = PartialSum + Weights(w);
-  end
+  iW = find(WeightSum >= WeightSum(end)/2, 1, 'first');
+  %   PartialSum = 0;
+  %   w = 0;
+  %   while PartialSum < Total/2
+  %     w = w + 1;
+  %     PartialSum = PartialSum + Weights(w);
+  %   end
   
-  if PartialSum == Total/2
+  if WeightSum(iW) == WeightSum(end)/2
     % Use weighted mean here, but any number between List(w: w+1) is
     % equally valid.
-    WM = WeightedMean(List(w: w+1), Weights(w: w+1));
+    WM = WeightedMean(List(iW: iW+1), Weights(iW: iW+1));
   else
-    WM = List(w);
+    WM = List(iW);
   end
   
 end 
@@ -404,10 +417,10 @@ function [VN, VdA, FN, FdA] = SurfaceNormals(Vertices, Faces, Normalize, Handedn
     Vertices = Vertices.vertices;
   end
   
-  if ~exist('Normalize', 'var') || isempty(Normalize)
+  if nargin < 3 || isempty(Normalize)
     Normalize = false;
   end
-  if ~exist('Handedness', 'var') || isempty(Handedness)
+  if nargin < 4 || isempty(Handedness)
     Handedness = 1;
   end
 
@@ -420,6 +433,7 @@ function [VN, VdA, FN, FdA] = SurfaceNormals(Vertices, Faces, Normalize, Handedn
   
   % For vertex normals, add adjacent face normals, then normalize.  Also
   % add 1/3 of each adjacent area element for vertex area.
+  % Modified Voronoi areas would be better.
   FdA = sqrt(FN(:,1).^2 + FN(:,2).^2 + FN(:,3).^2);
   VdA = zeros(nV, 1);
   for ff = 1:size(Faces, 1)
@@ -443,7 +457,7 @@ end
 
 
 
-function [err,SphereSc,Radius] = bst_os_fmins(X, TrueSc, Vertices)
+function [err,SphereSc,Radius] = bst_os_fmins(X, TrueSc, Vertices) %#ok<DEFNU>
     %Center = X(1:3)';
     %Radius = X(4);
     % Scale the true scalar to be a weighting function
