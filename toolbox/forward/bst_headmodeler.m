@@ -527,8 +527,8 @@ if (~isempty(OPTIONS.MEGMethod) && ~ismember(OPTIONS.MEGMethod, {'openmeeg', 'du
         bst_progress('start', 'Head modeler', 'Estimating overlapping spheres...');
         % Compute all spheres parameters, using the InnerSkull surface
         if ~isfield(OPTIONS, 'Sphere') || isempty(OPTIONS.Sphere)
-            OPTIONS.Sphere = bst_MultiSphere_SurfaceCurrent(OPTIONS.Channel(iMeg), double(sSurfInner.Vertices), double(sSurfInner.Faces));
-%             OPTIONS.Sphere = bst_os(OPTIONS.Channel(iMeg), double(sSurfInner.Vertices), double(sSurfInner.Faces));
+%             OPTIONS.Sphere = bst_MultiSphere_SurfaceCurrent(OPTIONS.Channel(iMeg), double(sSurfInner.Vertices), double(sSurfInner.Faces));
+            OPTIONS.Sphere = bst_os(OPTIONS.Channel(iMeg), double(sSurfInner.Vertices), double(sSurfInner.Faces));
         end
         % Fill the Param structure
         [Param(iMeg).Center] = deal(OPTIONS.Sphere.Center);

@@ -122,7 +122,10 @@ for i = 1:Nc
     [err, Sphere(i).Approx, Sphere(i).Radius] = bst_os_fmins(X, Sphere(i).Weight, Vertices);
     % Test added by KND (2010)
     if (sqrt(sum((tempCenter-Sphere(i).Center).^2)) > 2*tempR) || (Sphere(i).Radius > 2*tempR)
-        error(errMsg);
+        disp(sqrt(sum((tempCenter-Sphere(i).Center).^2)));
+        disp(Sphere(i).Radius);
+        disp(tempR);
+%         error(errMsg);
     end
 end
 
