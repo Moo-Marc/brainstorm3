@@ -76,17 +76,35 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
                     %                     for n = 1:nNew
                     %                         iBef =
                     %                     end
-                    MeanChannelMat.Channel = [MeanChannelMat.Channel, ChannelMats{i}.Channel(iNew)];
-                    % Add CTF compensation coefs for new channels if same number of references (actual same set confirmed later).
-                    if size(MeanChannelMat.MegRefCoef, 2) == size(ChannelMats{i}.MegRefCoef, 2)
+                    if ~isempty(iNew)
+                        
                         iMeg = find(strcmp({ChannelMats{i}.Channel.Type}, 'MEG'));
-                        [Unused, iiMeg] = ismember(iNew, iMeg); 
-                        % iiMeg is zero for non-matches. Get actual indices of new MEG channels.
-                        iiMeg(iiMeg == 0) = [];
-                        if ~isempty(iiMeg)
-                            MeanChannelMat.MegRefCoef = [MeanChannelMat.MegRefCoef; ChannelMats{i}.MegRefCoef(iiMeg, :)];
+                        [Unused, iMegNew] = ismember(iNew, iMeg);
+                        % iMegNew is zero for non-matches. Get actual indices of new MEG channels.
+                        iMegNew(iMegNew == 0) = [];
+                        if ~isempty(iMegNew)
+                            % Add CTF compensation coefs for new channels if same number of references (actual same set confirmed later).
+                            if size(MeanChannelMat.MegRefCoef, 2) == size(ChannelMats{i}.MegRefCoef, 2)
+                                MeanChannelMat.MegRefCoef = [MeanChannelMat.MegRefCoef; ChannelMats{i}.MegRefCoef(iMegNew, :)];
+                                % else we'll just remove it later.
+                            end
+                            % Convert location and orientation of new MEG channels to 1st file coordinates.
+                            % They will be changed to an average location later. 
+                            TransfMeg = eye(4);
+                            if isfield(MeanChannelMat, 'TransfMeg')
+                                for t = 1:numel(MeanChannelMat.TransfMeg)
+                                    TransfMeg = MeanChannelMat.TransfMeg{t} * TransfMeg;
+                                end
+                            end
+                            if isfield(ChannelMats{i}, 'TransfMeg')
+                                for t = 1:numel(ChannelMats{i}.TransfMeg)
+                                    TransfMeg = TransfMeg / MeanChannelMat.TransfMeg{t};
+                                end
+                            end
+                            tempChannelMat = channel_apply_transf(ChannelMats{i}, TransfMeg, iMegNew, false);
+                            MeanChannelMat.Channel = [MeanChannelMat.Channel, tempChannelMat{1}.Channel(iMegNew)];
                         end
-                    % else we'll just remove it later.
+                        MeanChannelMat.Channel = [MeanChannelMat.Channel, ChannelMats{i}.Channel(setdiff(iNew, iMegNew))];
                     end
                 end
             end
@@ -125,8 +143,8 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
         elseif size(MeanChannelMat.MegRefCoef, 1) ~= numel(iMeg) % Only for 'common' method
             iRemove = setdiff(iMeg, iChans);
             if ~isempty(iRemove)
-                [Unused, iiMeg] = ismember(iRemove, iMeg);
-                MeanChannelMat.MegRefCoef(iiMeg, :) = [];
+                [Unused, iMegNew] = ismember(iRemove, iMeg);
+                MeanChannelMat.MegRefCoef(iMegNew, :) = [];
             end
         end
     else
@@ -278,6 +296,7 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
         
         % Match channels by name.
         [Unused, iMean, iChans] = intersect(KeepChans, {ChannelMats{i}.Channel.Name}, 'stable'); % Stable keeps the order of CommonChans.
+        % KeepChans(iMean) == {ChannelMats{i}.Channel.Name}(iChans)
         
         % Sum EEG channel locations
         [Unused, iiChan] = setdiff(iMean', iMegRef);
@@ -286,14 +305,14 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
             if isempty(ChannelMats{i}.Channel(iChans(c)).Loc)
                 continue;
                 % Check the size of Loc matrix and the values of Weights matrix
-            elseif isempty(MeanChannelMat.Channel(iChans(c)).Loc)
+            elseif isempty(MeanChannelMat.Channel(iMean(c)).Loc)
                 MeanChannelMat.Channel(iMean(c)).Loc = ChannelMats{i}.Channel(iChans(c)).Loc;
                 Dist{iMean(c)} = sqrt(sum(ChannelMats{i}.Channel(iChans(c)).Loc.^2, 1));
                 MeanChannelMat.Channel(iMean(c)).Orient = ChannelMats{i}.Channel(iChans(c)).Orient;
                 nAvg(iMean(c)) = nAvg(iMean(c)) + 1;
             elseif ~isequal(size(MeanChannelMat.Channel(iMean(c)).Loc), size(ChannelMats{i}.Channel(iChans(c)).Loc))
-                Message = ['A channel does not have the same location structure between studies.' 10 ...
-                    'Cannot create a common channel file.'];
+                Message = sprintf(['A channel does not have the same location structure between studies. (file %d, chan %d)' 10 ...
+                    'Cannot create a common channel file.'], i, iChans(c));
                 MeanChannelMat = [];
                 return;
             else
