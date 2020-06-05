@@ -10,12 +10,12 @@ function hFig = view_leadfields(HeadmodelFiles)
 % @=============================================================================
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
-%
+% 
 % Copyright (c)2000-2020 University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
-%
+% 
 % FOR RESEARCH PURPOSES ONLY. THE SOFTWARE IS PROVIDED "AS IS," AND THE
 % UNIVERSITY OF SOUTHERN CALIFORNIA AND ITS COLLABORATORS DO NOT MAKE ANY
 % WARRANTY, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
@@ -25,7 +25,7 @@ function hFig = view_leadfields(HeadmodelFiles)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Takfarinas Medani, Francois Tadel, 2020
+% Authors: John Mosher, Takfarinas Medani, Francois Tadel, 2020
 
 
 %% ===== PARSE INPUTS =====
@@ -36,6 +36,7 @@ end
 %% ===== GET DATA =====
 LF_finale = [];
 HeadmodelMat = cell(1, length(HeadmodelFiles));
+SubjectName = cell(1, length(HeadmodelFiles));
 CortexSurface = [];
 ChannelMat = [];
 Channels = [];
@@ -75,13 +76,13 @@ for iFile = 1:length(HeadmodelFiles)
     % Load channel file
     if (iFile == 1)
         ChannelMat = in_bst_channel(sStudy.Channel.FileName, 'Channel');
-        SubjectName = bst_fileparts(bst_fileparts(sStudy.Channel.FileName));
     else
         newChanMat = in_bst_channel(sStudy.Channel.FileName, 'Channel');
         if ~isequal({ChannelMat.Channel.Name}, {newChanMat.Channel.Name})
             error('The files have different lists of channels.');
         end
     end
+    SubjectName{iFile} = bst_fileparts(bst_fileparts(sStudy.Channel.FileName));
 
     % Get surface file to display in the figure
     if isempty(CortexSurface) && ~isempty(HeadmodelMat{iFile}.SurfaceFile)
@@ -263,7 +264,7 @@ bst_progress('stop');
                 'Color',     ColorOrder(mod(iLF-1, length(ColorOrder)) + 1, :), ...
                 'Tag',       'lfArrows');
             % Arrow legends
-            strLegend{iLF} = [SubjectName ' : ' selectedModality  ' ' HeadmodelMat{iLF}.([selectedModality 'Method'])];
+            strLegend{iLF} = [SubjectName{iLF} ' : ' selectedModality  ' ' HeadmodelMat{iLF}.Comment];
             hold on
         end
 
@@ -296,9 +297,16 @@ bst_progress('stop');
                     'MarkerSize',      8, ...
                     'Tag',             'RefChannel');
             end
+            % Title bar (channel name)
+            if isAvgRef
+                strTitle = sprintf('Channel #%d/%d  (%s) | %s ref Channel = AvgRef', iChannel, length(Channels), Channels(iChannel).Name,selectedModality);
+            else
+                strTitle = sprintf('Channel #%d/%d  (%s) | %s ref Channel = %s', iChannel, length(Channels), Channels(iChannel).Name,selectedModality,Channels(iRef).Name);
+            end
+        else
+            strTitle = sprintf('Channel #%d/%d  (%s)', iChannel, length(Channels), Channels(iChannel).Name);            
         end
-        % Title bar (channel name)
-        strTitle = sprintf('Channel #%d/%d  (%s)', iChannel, length(Channels), Channels(iChannel).Name);
+        
         if (iChannel == 1) && (length(Channels) > 1)
             strTitle = [strTitle, '       [Press arrows for next/previous channel (or H for help)]'];
         end

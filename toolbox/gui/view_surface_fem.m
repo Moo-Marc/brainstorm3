@@ -130,21 +130,13 @@ setappdata(hFig, 'SubjectFile',  SubjectFile);
 %% ===== DISPLAY FEM MESH =====
 % Load the input file
 FemMat = load(file_fullpath(SurfaceFile));
-% Check the mesh format here : tetra ok, hexa ==> convert to tetra ==> need some functions on bst-duneuro/matlab/external/gibbon
-if size(FemMat.Elements,2) == 8
-    % Install bst_duneuro if needed, for function hex2tet
-    if ~exist('bst_duneuro', 'file')
-        errMsg = process_generate_fem('InstallDuneuro', 1);
-        if ~isempty(errMsg) || ~exist('bst_duneuro', 'file')
-            bst_progress('stop');
-            return;
-        end
-    end
-    % convert the mesh to tetra for diplay purpose
+% Hexa => convert to tetra
+if (size(FemMat.Elements,2) == 8)
+    % Convert the mesh to tetra for diplay purpose
     [tetraElem,tetraNode,tetraLabel] = hex2tet(double(FemMat.Elements), FemMat.Vertices, double(FemMat.Tissue), 3);
-    % updates FemMat for display purpose
+    % Updates FemMat for display purpose
     FemMat.Vertices = tetraNode;
-    FemMat.Elements = tetraElem;
+    FemMat.Elements = tetraElem(:, [2 1 3 4]);
     FemMat.Tissue = tetraLabel;
 end
 
@@ -163,7 +155,7 @@ if (size(SurfColor,2) ~= Ntissue)
     labels = lower(FemMat.TissueLabels);
     % Get default color for each layer
     for iTissue = 1:Ntissue
-        switch process_generate_fem('GetFemLabel', labels{iTissue})
+        switch process_fem_mesh('GetFemLabel', labels{iTissue})
             case 'white'
                 % SurfColor(iTissue,:) = [250 250 250]/255;
                 SurfColor(iTissue,:) = [220, 220, 220] ./ 255;

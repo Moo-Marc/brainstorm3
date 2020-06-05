@@ -161,9 +161,13 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         isCutEmpty = 0;
     end
     
+    % If there is only one trial: ignore concatenation
+    if (length(sInputs) == 1)
+        isConcatTrials = 0;
+    end
     % Check for incompatible options
     if isConcatTrials && ~isAvgTime
-        bst_report('Error', sProcess, sInputs, ['Incompatible options: "concatenate trials" and "keep time dimension".' 10 'They both need the time dimension.']);
+        bst_report('Error', sProcess, sInputs, ['Incompatible options: "Save all the trials in one file" and "Keep time dimension".' 10 'They both need the time dimension.']);
         return;
     end
     % If all the files have the same Subject/Condition: consider it is enforced (to have it numbered)
@@ -360,7 +364,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
             if isVolume
                 sMriOut = sMri;
                 % Build interpolated cube
-                sMriOut.Cube = tess_interp_mri_data(MriInterp, size(sMri.Cube), sInput.Data(:,i), isVolumeGrid);
+                sMriOut.Cube = tess_interp_mri_data(MriInterp, size(sMri.Cube(:,:,:,1)), sInput.Data(:,i), isVolumeGrid);
                 % Downsample volume
                 if (VolDownsample > 1)
                     sMriOut = mri_downsample(sMriOut, VolDownsample);

@@ -93,12 +93,13 @@ function [sMri,iMri] = LoadMri(MriFile)
         end
         % Get MRI file
         MriFile = sSubject.Anatomy(sSubject.iAnatomy).FileName;
-        iAnatomy = sSubject.iAnatomy;
     else
-        [sSubject, iSubject, iAnatomy] = bst_get('MriFile', MriFile);
+        sSubject = bst_get('MriFile', MriFile);
     end
 
     % ===== CHECK IF LOADED =====
+    % Use short file name
+    MriFile = file_short(MriFile);
     % Check if surface is already loaded
     iMri = find(file_compare({GlobalData.Mri.FileName}, MriFile));
     % If MRI is not loaded yet: load it
@@ -117,16 +118,41 @@ function [sMri,iMri] = LoadMri(MriFile)
         end
         % Set filename
         sMri.FileName = file_win2unix(MriFile);
-%         % If loading an MRI that is not the primary one: load the transformations from the first imported one
-%         if (iAnatomy >= 2) && (isempty(sMri.SCS) || isempty(sMri.SCS.R) || isempty(sMri.SCS.T))
-%             sPrimaryMri = load(file_fullpath(sSubject.Anatomy(1).FileName), 'SCS', 'NCS');
-%             sMri.SCS = sPrimaryMri.SCS;
-%             sMri.NCS = sPrimaryMri.NCS;
-%         end
+        
+        % === MULTIPLE VOLUMES ===
+        n4 = size(sMri.Cube,4);
+        if (n4 > 1)
+            % If there is another volume with the same 4th dimension loaded: keep as it is
+            if isequal(GlobalData.UserTimeWindow.Time, [1, n4])
+                % Keep loading
+            % If there is no time data loaded: load as time-varying volume
+            elseif isempty(GlobalData.UserTimeWindow.Time)
+                % Create Measures structure
+                Measures = db_template('Measures');
+                Measures.Time            = [1, n4];
+                Measures.SamplingRate    = 1;
+                Measures.NumberOfSamples = n4;
+                Measures.DataType        = 'volume';
+                Measures.DisplayUnits    = 'vol';
+                % Get existing dataset for this subject, or create new dataset
+                iDS = GetDataSetSubject(sSubject.FileName, 1);
+                GlobalData.DataSet(iDS).Measures    = Measures;
+                GlobalData.DataSet(iDS).SubjectFile = file_short(sSubject.FileName);
+                GlobalData.DataSet(iDS).Measures    = Measures;
+                % Update time window
+                CheckTimeWindows();
+            % Otherwise: keep only the first one, discard all the other volumes
+            else
+                sMri.Cube = sMri.Cube(:,:,:,1);
+            end
+        end
+        
+        % === REGISTER NEW MRI ===
         % Add MRI to loaded MRIs in this protocol
         iMri = length(GlobalData.Mri) + 1;
         % Save MRI in memory
         GlobalData.Mri(iMri) = sMri;
+        
     % Else: Return the existing instance
     else
         sMri = GlobalData.Mri(iMri);
@@ -358,7 +384,7 @@ function grid2mri_interp = GetGrid2MriInterp(iDS, iResult, GridSmooth) %#ok<DEFN
                 tess2mri_interp = tess_interp_mri(SurfaceFile, sMri);
                 % Initialize returned interpolation matrix
                 GridAtlas = GlobalData.DataSet(iDS).Results(iResult).GridAtlas;
-                grid2mri_interp = sparse(numel(sMri.Cube), size(GridAtlas.Grid2Source,1)); 
+                grid2mri_interp = sparse(numel(sMri.Cube(:,:,:,1)), size(GridAtlas.Grid2Source,1)); 
                 % Process each region separately
                 ind = 1;
                 sScouts = GlobalData.DataSet(iDS).Results(iResult).GridAtlas.Scouts;
@@ -403,7 +429,7 @@ function [mrimask, sMri, sSurf] = GetSurfaceMask(SurfaceFile, MriFile) %#ok<DEFN
     % MRI mask do not exist yet
     else
         % Compute mrimask
-        mrimask = tess_mrimask(size(sMri.Cube), tess2mri_interp);
+        mrimask = tess_mrimask(size(sMri.Cube(:,:,:,1)), tess2mri_interp);
         % Add it to loaded structure
         GlobalData.Surface(iSurf).mrimask = mrimask;
         % Save new mrimask into file
@@ -887,6 +913,10 @@ function LoadRecordingsMatrix(iDS)
     % If there is only one time sample : copy it to get 2 time samples
     if (size(GlobalData.DataSet(iDS).Measures.F, 2) == 1)
         GlobalData.DataSet(iDS).Measures.F = repmat(GlobalData.DataSet(iDS).Measures.F, [1,2]);
+        % Also duplicate Std if present
+        if isfield(DataMat, 'Std') && ~isempty(DataMat.Std)
+            GlobalData.DataSet(iDS).Measures.Std = repmat(GlobalData.DataSet(iDS).Measures.Std, [1,2]);
+        end    
     end
 end
 
@@ -1685,6 +1715,14 @@ function [iDS, iTimefreq, iResults] = LoadTimefreqFile(TimefreqFile, isTimeCheck
             GlobalData.DataSet(iDS).Results(iResults).GridAtlas       = TimefreqMat.GridAtlas;
             GlobalData.DataSet(iDS).Results(iResults).nComponents     = 3;
         end
+    end
+    
+    % ===== REMOVE NAN =====
+    % Replace NaN values with 0, and add them to the mask
+    iNan = find(isnan(TimefreqMat.TF));
+    if ~isempty(iNan)
+        disp(sprintf('BST> Error: There are %d abnormal NaN values in this file, check the computation process.', length(iNan)));
+        TimefreqMat.TF(iNan) = 0;
     end
     
     % ===== CREATE NEW TIMEFREQ ENTRY =====
@@ -3354,10 +3392,8 @@ end
 %% ===== UNLOAD MRI =====
 function UnloadMri(MriFile) %#ok<DEFNU>
     global GlobalData;
-    % Get SUBJECTS directory
-    ProtocolInfo = bst_get('ProtocolInfo');
     % Force relative path
-    MriFile = strrep(MriFile, ProtocolInfo.SUBJECTS, '');
+    MriFile = file_short(MriFile);
     % Check if MRI is already loaded
     iMri = find(file_compare({GlobalData.Mri.FileName}, MriFile));
     % If it is: unload it

@@ -1761,16 +1761,13 @@ function [bstPanel, panelName] = CreatePanel(sFiles, sFiles2, FileTimeVector)
         jDialog = jPanelProcess.getTopLevelAncestor();
         jDialog.setAlwaysOnTop(0);
         jDialog.setVisible(0);
-%         isModal = jDialog.isModal();
-%         jDialog.setModal(0);
         drawnow;
         % Display options dialog window
-        value = gui_show_dialog(sCurProcess.Comment, fcnPanel, 1, [], sCurProcess, sFiles);
+        value = bst_call(@gui_show_dialog, sCurProcess.Comment, fcnPanel, 1, [], sCurProcess, sFiles);
         drawnow;
         % Restore pipeline editor
         jDialog.setVisible(1);
         jDialog.setAlwaysOnTop(1);
-%         jDialog.setModal(isModal);
         drawnow;
         
         % Editing was cancelled
@@ -2388,7 +2385,7 @@ function [bstPanel, panelName] = CreatePanel(sFiles, sFiles2, FileTimeVector)
                         % Create final string
                         optStr = [', ...' strComment, 10 strIdent '''' optNames{iOpt} ''', ' strPad str_format(optValue, 1, 2)];
                         % Replace raw filenames and subject names
-                        if isfield(opt, 'Type') && ismember(opt.Type, {'filename','datafile'}) && iscell(opt.Value)
+                        if isfield(opt, 'Type') && ismember(opt.Type, {'filename','datafile'}) && iscell(opt.Value) && ~isempty(RawFiles)
                             % List of files
                             if iscell(optValue{1})
                                 for ic = 1:length(optValue{1})
@@ -3017,13 +3014,13 @@ function [SubjNames, RawFiles] = GetSeparateInputs(sProcesses)
                 if iscell(opt.Value{1})
                     for ic = 1:length(opt.Value{1})
                         iFile = find(strcmpi(RawFiles, opt.Value{1}{ic}));
-                        if isempty(iFile)
+                        if isempty(iFile) && ~isempty(opt.Value{1}{ic})
                             RawFiles{end+1} = opt.Value{1}{ic};
                         end
                     end
                 else
                     iFile = find(strcmpi(RawFiles, opt.Value{1}));
-                    if isempty(iFile)
+                    if isempty(iFile) && ~isempty(opt.Value{1})
                         RawFiles{end+1} = opt.Value{1};
                     end
                 end
