@@ -57,6 +57,7 @@ function [MeanChannelMat, Message] = channel_average(ChannelMats, iStudies, Meth
                     KeepChans = {ChannelMats{i}.Channel.Name};
                 else
                     KeepChans = intersect(KeepChans, {ChannelMats{i}.Channel.Name}, 'stable');
+
                 end
             end
             [Unused, iMean, iChans] = intersect(KeepChans, {MeanChannelMat.Channel.Name}, 'stable'); % Stable keeps the order of CommonChans.
