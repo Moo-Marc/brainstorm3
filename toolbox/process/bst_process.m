@@ -777,6 +777,8 @@ function OutputFile = ProcessFilter(sProcess, sInput)
                 if ~isempty(sInput.Std)
                     tmp2 = sInput.Std;
                     sInput.Std = sInput.Std(iRowProcess,:,:,:);
+                else
+                    tmp2 = [];
                 end
                 % Process file
                 sInput = sProcess.Function('Run', sProcess, sInput);
@@ -794,6 +796,9 @@ function OutputFile = ProcessFilter(sProcess, sInput)
                     end
                     % Standard error
                     if ~isempty(sInput.Std)
+                        if isempty(tmp2)
+                            tmp2 = zeros(length(iRow), size(sInput.Std,2), size(sInput.Std,3), size(sInput.Std,4));
+                        end
                         tmp2(iRowProcess,:,:,:) = sInput.Std;
                         sInput.Std = tmp2;
                     end
@@ -886,7 +891,7 @@ function OutputFile = ProcessFilter(sProcess, sInput)
                     end
                 else
                     OutputMat = zeros(nRow, nOutTime, nFreq);
-                    if ~isempty(stdValues)
+                    if ~isempty(sInput.Std)
                         OutputStd = zeros(nRow, nOutTime, nFreq);
                     else
                         OutputStd = [];
@@ -916,7 +921,7 @@ function OutputFile = ProcessFilter(sProcess, sInput)
                 end
             else
                 OutputMat(iRow,iOutTime,:) = sInput.A;
-                if ~isempty(stdValues) && ~isempty(sInput.Std)
+                if ~isempty(sInput.Std)
                     OutputStd(iRow,iOutTime,:,:) = sInput.Std;
                 else
                     OutputStd = [];

@@ -1,4 +1,4 @@
-function [elec, grad] = out_fieldtrip_channel(ChannelFile, isIncludeRef)
+function [elec, grad] = out_fieldtrip_channel(ChannelFile, isIncludeRef, ChannelFlag)
 % OUT_FIELDTRIP_CHANNEL: Converts a channel file into elec/grad structures
 % 
 % USAGE:  [elec, grad] = out_fieldtrip_channel(ChannelFile, isIncludeRef=1)
@@ -26,6 +26,11 @@ function [elec, grad] = out_fieldtrip_channel(ChannelFile, isIncludeRef)
 
 
 % ===== PARSE INPUT =====
+if (nargin < 3) || isempty(ChannelFlag)
+    isIncludeBad = 1;
+else
+    isIncludeBad = 0;
+end
 if (nargin < 2) || isempty(isIncludeRef)
     isIncludeRef = 1;
 end
@@ -46,9 +51,16 @@ if isempty(ChannelMat)
     error('No channel file available.');
 end
 % Find MEG and EEG sensors
-iEeg = channel_find(ChannelMat.Channel, 'EEG,SEEG,ECOG');
-iMeg = channel_find(ChannelMat.Channel, 'MEG');
-iRef = channel_find(ChannelMat.Channel, 'MEG REF');
+    iEeg = channel_find(ChannelMat.Channel, 'EEG,SEEG,ECOG');
+    iMeg = channel_find(ChannelMat.Channel, 'MEG');
+    iRef = channel_find(ChannelMat.Channel, 'MEG REF');
+if ~isIncludeBad
+    iEeg = good_channel(ChannelMat.Channel, ChannelFlag, 'EEG,SEEG,ECOG');
+    iMegB = iMeg;
+    iRefB = iRef;
+    iMeg = good_channel(ChannelMat.Channel, ChannelFlag, 'MEG');
+    iRef = good_channel(ChannelMat.Channel, ChannelFlag, 'MEG REF');
+end    
 if isIncludeRef
     iMegAll = [iMeg, iRef];
 else
@@ -129,16 +141,25 @@ if ~isempty(iMeg)
     end
     % Add MegRefCoef (CTF/4D 3rd order gradient compensation)
     if isIncludeRef && ~isempty(iRef)
-        % Error: Not all the sensors are selected
-        if (size(ChannelMat.MegRefCoef,1) ~= length(iMeg)) || (size(ChannelMat.MegRefCoef,2) ~= length(iRef))
-            error('CTF compensation can be used only when using all the MEG sensors.');
+        if isIncludeBad
+            % Error: Not all the sensors are selected
+            if (size(ChannelMat.MegRefCoef,1) ~= length(iMeg)) || (size(ChannelMat.MegRefCoef,2) ~= length(iRef))
+                error('CTF compensation can be used only when using all the MEG sensors.');
+            end
+            % Apply compensation matrix to ".tra" matrix
+            GradComp = eye(length(ChannelMat.Channel));
+            GradComp(iMeg,iRef) = -ChannelMat.MegRefCoef;
+            grad.tra = GradComp(iMegAll,iMegAll) * grad.tra;
+            % grad.tra is later applied to the leadfield in ft_compute_leadfield:
+            % lf = sens.tra * lf;
+        else
+            if (size(ChannelMat.MegRefCoef,1) ~= length(iMegB)) || (size(ChannelMat.MegRefCoef,2) ~= length(iRefB))
+                error('CTF compensation can be used only when using all the MEG sensors.');
+            end
+            GradComp = eye(length(iMegAll));
+            GradComp(1:length(iMeg), (length(iMeg)+1):end) = -ChannelMat.MegRefCoef(ismember(iMegB,iMeg),ismember(iRefB, iRef));
+            grad.tra = GradComp * grad.tra;
         end
-        % Apply compensation matrix to ".tra" matrix
-        GradComp = eye(length(ChannelMat.Channel)); 
-        GradComp(iMeg,iRef) = -ChannelMat.MegRefCoef;
-        grad.tra = GradComp(iMegAll,iMegAll) * grad.tra;
-        % grad.tra is later applied to the leadfield in ft_compute_leadfield:
-        % lf = sens.tra * lf;
     end
     % Apply projectors (SSP or ICA)
     if ~isempty(Proj)
