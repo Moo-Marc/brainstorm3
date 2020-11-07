@@ -963,7 +963,8 @@ function [Time, Freqs, TfInfo, TF, RowNames, FullTimeVector, DataType, LowFreq, 
             RowNames = RowNames(iSelected);
         end
         if isFooof && isequal(TfInfo.FOOOFDisp, 'overlay')
-            RowNames = {RowNames{1}, 'Background fit', 'Peak fit', 'FOOOF model'};
+            RowNames = {RowNames{1}, 'Background', 'Background fit', 'Background mask', 'Initial bkgnd fit', 'Robust bkgnd fit', ...
+                'Peak fit (×)', 'Peak fit (+)', 'FOOOF model'};
         end
         % Show stat clusters
         if strcmpi(file_gettype(TfInfo.FileName), 'ptimefreq')

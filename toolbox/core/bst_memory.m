@@ -2354,7 +2354,7 @@ function [Values, iTimeBands, iRow, nComponents] = GetTimefreqValues(iDS, iTimef
     if isFooof && ~isequal(FooofDisp, 'spectrum')
         isFooofFreq = ismember(GlobalData.DataSet(iDS).Timefreq(iTimefreq).Freqs, GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.freqs);
         if isequal(FooofDisp, 'overlay')
-            nFooofRow = 4;
+            nFooofRow = 9;
         else
             nFooofRow = numel(iRow);
         end
@@ -2375,14 +2375,28 @@ function [Values, iTimeBands, iRow, nComponents] = GetTimefreqValues(iDS, iTimef
         switch FooofDisp
             case 'overlay'
                 Values(1,1,:) = GlobalData.DataSet(iDS).Timefreq(iTimefreq).TF(iRow, 1, :);
-                Values(4,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).fooofed_spectrum], nFooofFreq, []), [2, 3, 1]);
-                Values(2,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).ap_fit], nFooofFreq, []), [2, 3, 1]);
-                % Peaks are fit in log space, so they are multiplicative in linear space and not in the same scale, show difference instead. 
-                Values(3,1,isFooofFreq) = Values(4,1,isFooofFreq) - Values(2,1,isFooofFreq); 
-                %Values(3,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).peak_fit], nFooofFreq, []), [2, 3, 1]);
+                Values(9,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).fooofed_spectrum], nFooofFreq, []), [2, 3, 1]);
+                Values(3,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).ap_fit], nFooofFreq, []), [2, 3, 1]);
+                if isfield(GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow), 'ap_mask')
+                    Values(4,1,isFooofFreq) = mean(Values(3,1,isFooofFreq)) * permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).ap_mask], nFooofFreq, []), [2, 3, 1]);
+                end
+                if isfield(GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow), 'init_ap_fit')
+                    Values(5,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).init_ap_fit], nFooofFreq, []), [2, 3, 1]);
+                end
+                if isfield(GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow), 'robust_ap_fit')
+                    Values(6,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).robust_ap_fit], nFooofFreq, []), [2, 3, 1]);
+                end
+                % Peaks are fit in log space, so they are multiplicative in linear space and not in the same scale.
+                % Show both the scaled "multiplier" fit and the difference. 
+                Values(7,1,isFooofFreq) = mean(Values(9,1,isFooofFreq)) * permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).peak_fit], nFooofFreq, []), [2, 3, 1]);
+                Values(8,1,isFooofFreq) = Values(9,1,isFooofFreq) - Values(3,1,isFooofFreq); 
+                % Show residuals after peak subtraction.
+                %Values(2,1,isFooofFreq) = Values(1,1,isFooofFreq) - Values(8,1,isFooofFreq); 
+                % Actually, what is used to fit the background is "log subtracted", so divided by peak fit.
+                Values(2,1,isFooofFreq) = Values(1,1,isFooofFreq) ./ permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).peak_fit], nFooofFreq, []), [2, 3, 1]);
                 % Use TF min as cut-off level for peak display.
                 YLowLim = min(Values(1,1,:));
-                Values(3,1,Values(3,1,:) < YLowLim) = NaN;
+                Values(8,1,Values(8,1,:) < YLowLim) = NaN;
             case 'model'
                 Values(:,1,isFooofFreq) = permute(reshape([GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data(iRow).fooofed_spectrum], nFooofFreq, []), [2, 3, 1]);
             case 'aperiodic'
