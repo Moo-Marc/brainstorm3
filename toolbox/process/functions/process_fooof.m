@@ -284,7 +284,7 @@ function [fs, fg] = FOOOF_matlab(TF, Freqs, opt)
                 aperiodic_pars = fit_aperiodic(fs, aperiodic_spec, opt.aperiodic_mode, false, opt.log_error);
             case 'full'
                 % Refit entire model at once
-                [aperiodic_pars, keap_pars] = fit_full(fs, spec(chan,:), opt, robust_ap_params, peak_pars);
+                [aperiodic_pars, peak_pars] = fit_full(fs, spec(chan,:), opt, robust_ap_params, peak_pars, peak_function);
                 %% Not reapplying peak thresholds (for now)
         end
         % Generate model fit
@@ -377,8 +377,9 @@ function logy = expo_function(freqs, params)
 
     if numel(params) > 4
         % 5th parameter is a flag to indicate floor but no ceiling.
-        % 4th parameter is already -inf, for no ceiling, but needs to be swapped into place.
+        % 4th parameter should already be -inf, for no ceiling, but needs to be swapped into place.
         params([3,4]) = params([4,3]);
+        params(3) = -inf; % to be safe
     elseif numel(params) < 4
         % Add possibly absent ceiling and floor parameters.
         % As defined, these last 2 parameters are powers of 10 relative to b,
@@ -420,19 +421,17 @@ function [aperiodic_params, perc_mask, initial_params] = fit_aperiodic(freqs, sp
     options = optimset('Display', 'off', 'TolX', 1e-4, 'TolFun', 1e-6, ...
         'MaxFunEvals', 5000, 'MaxIter', 5000);
 
+    isFloor = false;
     switch (aperiodic_mode)
         case 'fixed' % linear in log-log
             guess_params = [-2, spectrum(1)];
-            error_function = @error_expo_function;
         case 'ceiling'  % with ceiling at low frequencies
             guess_params = [-2, spectrum(1), -1];
-            error_function = @error_expo_function;
         case 'full' % also with noise floor at high frequencies
             guess_params = [-2, spectrum(1), -1, -2];
-            error_function = @error_expo_function;
         case 'floor' % no ceiling
             guess_params = [-2, spectrum(1), -2];
-            error_function = @error_floor_function;
+            isFloor = true;
     end
     aperiodic_params = fminsearch(error_function, guess_params, options, freqs, spectrum);
     
@@ -455,21 +454,23 @@ function [aperiodic_params, perc_mask, initial_params] = fit_aperiodic(freqs, sp
             'MaxFunEvals', 5000, 'MaxIter', 5000);
         aperiodic_params = fminsearch(error_function, aperiodic_params, options, freqs(perc_mask), spectrum(perc_mask));
     end
+    if isequal(aperiodic_mode, 'floor')
+        % Add "flag" parameters for floor without ceiling
+        aperiodic_params = [aperiodic_params, -inf, 0];
+    end
     
     %% ===== Background ERROR FUNCTIONS =====
-    function err = error_expo_function(params, xs, ys)
+    function err = error_ap_function(params, xs, ys)
+        if isFloor
+            % kludge: 5 parameters to specify floor mode without ceiling.
+            params = [params, -inf, 0];
+        end
         ym = expo_function(xs, params);
         if isLogError
             err = sum((ys - ym).^2);
         else
             err = sum((10.^ys - 10.^ym).^2);
         end
-    end
-    
-    function err = error_floor_function(params, xs, ys)
-        % kludge: 5 parameters to specify floor mode without ceiling.
-        params = [params, -inf, 0];
-        err = error_expo_function(params, xs, ys);
     end
     
 end
@@ -585,33 +586,33 @@ function [best_params, best_function] = fit_peaks(freqs, flat_iter, max_n_peaks,
                         'MaxFunEvals', 3000, 'MaxIter', 3000); % Tuned options
                     lb = [guess(:,1)-guess(:,3)*2,zeros(size(guess(:,2))),ones(size(guess(:,3)))*width_limits(1)];
                     ub = [guess(:,1)+guess(:,3)*2,inf(size(guess(:,2))),ones(size(guess(:,3)))*width_limits(2)];
-                    model_params = fmincon(@error_model_constr, guess, [],[],[],[], ...
-                        lb, ub, [], options, freqs, flat_spec, peak_function);
-                    error = error_model_constr(model_params, freqs, flat_spec, peak_function);
+                    peak_params = fmincon(@error_peaks, guess, [],[],[],[], ...
+                        lb, ub, [], options, freqs, flat_spec, peak_function, [], constraint);
+                    error = error_peaks(peak_params, freqs, flat_spec, peak_function, [], constraint);
                 otherwise
                     % Use basic simplex approach, fminsearch, with cost function based on parameter guesses.
                     % fminsearch stops when *both* tolx and tolfun are satisfied.
                     % The tolerance values are *absolute*.
                     options = optimset('Display', 'off', 'TolX', 1e-4, 'TolFun', 1e-5, ...
                         'MaxFunEvals', 5000, 'MaxIter', 5000);
-                    model_params = fminsearch(@error_model,...
+                    peak_params = fminsearch(@error_peaks,...
                         guess, options, freqs, flat_spec, peak_function, guess, constraint);
-                    error = error_model(model_params, freqs, flat_spec, peak_function, guess, constraint);
+                    error = error_peaks(peak_params, freqs, flat_spec, peak_function, guess, constraint);
             end
         else
-            model_params = zeros(1, 3);
+            peak_params = zeros(1, 3);
             error = sum(flat_spec.^2);
         end
         
         if error < best_error
             best_error = error;
-            best_params = model_params;
+            best_params = peak_params;
             best_function = peak_function;
         end
     end
 
     %% ===== Peak ERROR FUNCTION =====
-    function err = error_model(params, xVals, yVals, peak_function, guess, constraint)
+    function err = error_peaks(params, xVals, yVals, peak_function, guess, constraint)
         fitted_vals = zeros(size(yVals));
         weak = 1E2;
         strong = 1E7;
@@ -638,6 +639,102 @@ function [best_params, best_function] = fit_peaks(freqs, flat_iter, max_n_peaks,
         end
     end
         
+end
+
+% Fit the full model (scale-free background + oscillation peaks) at once.
+function [ap_params, peak_params] = fit_full(freqs, spectrum, opt, ap_params, peak_params, peak_function)
+
+    opt.log_error
+    % Options used in error function
+    isLogError = opt.log_error;
+    Constraint = opt.constraint;
+    isFloor = isequal(opt.aperiodic_mode, 'floor');
+    
+    % Pack parameters
+    nParams = numel(ap_params);
+    nPeaks = size(peak_params, 1);
+    if isFloor % nParams == 5
+        nParams = 3;
+        ap_params([4,5]) = [];
+    end
+    StartingParams = [ap_params(:), peak_params(:)];
+    
+    switch lower(opt.constraint)
+        case 'constrained'
+            % Use fmincon from Optimisation Toolbox
+            % fmincon stops when *any* tolerance is satisfied.
+            % The tolerance values are *relative* for the default algorithm (interior-point).
+            options = optimset('Display', 'off', 'TolX', 1e-3, 'TolFun', 1e-5, ...
+                'MaxFunEvals', 3000, 'MaxIter', 3000); % Tuned options
+            % Peak bounds
+            lb = [peak_params(:,1)-peak_params(:,3)*2,zeros(nPeaks,1),ones(nPeaks,1)*opt.peak_width_limits(1)/2];
+            ub = [peak_params(:,1)+peak_params(:,3)*2,inf(nPeaks,1),ones(nPeaks,1)*opt.peak_width_limits(2)/2];
+            % Add bounds for ap parameters.
+            lb = [-inf(nParams,1), lb(:)];
+            ub = [inf(nParams,1), ub(:)];
+            model_params = fmincon(@error_full, StartingParams, [],[],[],[], ...
+                lb, ub, [], options, freqs, spectrum, peak_function, [], opt.constraint);
+            %error = error_full(model_params, freqs, flat_spec, peak_function, [], opt.constraint);
+        otherwise
+            % Use basic simplex approach, fminsearch, with cost function based on parameter guesses.
+            % fminsearch stops when *both* tolx and tolfun are satisfied.
+            % The tolerance values are *absolute*.
+            options = optimset('Display', 'off', 'TolX', 1e-4, 'TolFun', 1e-5, ...
+                'MaxFunEvals', 5000, 'MaxIter', 5000);
+            model_params = fminsearch(@error_full,...
+                StartingParams, options, freqs, spectrum, peak_function, StartingParams, opt.constraint);
+            %error = error_full(model_params, freqs, flat_spec, peak_function, guess, opt.constraint);
+    end
+    
+    % Unpack parameters
+    ap_params = model_params(1:nParams(1));
+    if isFloor
+        % Add additional "flag" parameters.
+        ap_params = [ap_params, -inf, 0];
+    end
+    peak_params = reshape(model_params((nParams(1)+1):end), [], 3);
+
+    %% ===== Full model error function =====
+    function err = error_peaks(Params, Freq, Spec)
+
+        % Unpack parameters
+        ap_ps = Params(1:nParams(1));
+        peak_ps = reshape(Params((nParams(1)+1):end), [], 3);
+        
+        if isFloor
+            % kludge: 5 parameters to specify floor mode without ceiling.
+            ap_ps = [ap_ps, -inf, 0];
+        end
+        Fit = expo_function(Freq, ap_ps);
+        
+        for iPeako = 1:nPeaks
+            Fit = Fit + peak_function(Freq, peak_ps(iPeako,1), peak_ps(iPeako,2), peak_ps(iPeako,3));
+        end
+        % Subtract the model from the spectrum.
+        % Sum of square residuals
+        if isLogError
+            err = sum((Spec - Fit).^2);
+        else
+            err = sum((10.^Spec - 10.^Fit).^2);
+        end
+        switch Constraint
+            % case {'none', 'constrained'} % do nothing.
+            case 'weak' % Add small weight to deviations from guess m and amp
+                weak = 1e2;
+                PeakGuess = reshape(StartingParams((nParams(1)+1):end), [], 3);
+                err = err + ...
+                    weak * sum((peak_ps(:,1) - PeakGuess(:,1)).^2) + ...
+                    weak * sum((peak_ps(:,2) - PeakGuess(:,2)).^2);
+            case 'strong' % Add large weight to deviations from guess m and amp
+                strong = 1e7;
+                PeakGuess = reshape(StartingParams((nParams(1)+1):end), [], 3);
+                err = err + ...
+                    strong * sum((peak_ps(:,1) - PeakGuess(:,1)).^2) + ...
+                    strong * sum((peak_ps(:,2) - PeakGuess(:,2)).^2);
+        end
+        
+    end
+    
 end
 
 function guess = drop_peak_cf(guess, bw_std_edge, freq_range)
