@@ -1,5 +1,5 @@
-function errorMsg = import_anatomy_cat(varargin)
-% IMPORT_ANATOMY_CAT: Import a full CAT12 folder as the subject's anatomy (switch between versions).
+function errMsg = bst_websave(filename, url)
+% BST_WEBSAVE: Save the content of a URL to a file
 
 % @=============================================================================
 % This function is part of the Brainstorm software:
@@ -21,12 +21,24 @@ function errorMsg = import_anatomy_cat(varargin)
 %
 % Authors: Francois Tadel, 2020
 
-CatDir = varargin{2};
-% Switch between versions for the CAT12 reader, depending on the existence of a label file
-AnnotFile = file_find(bst_fullfile(CatDir, 'label'), 'lh.aparc_DK40.*.annot', 0);
-if file_exist(AnnotFile)
-    errorMsg = import_anatomy_cat_2020(varargin{:});
+% Reading function: urlread replaced with webread in Matlab 2014b
+if (bst_get('MatlabVersion') <= 803)
+    url_read_fcn = @(f,u)urlwrite(u,f);
+    url_read_alt = @(f,u)websave(f,u);
 else
-    errorMsg = import_anatomy_cat_2019(varargin{:});
+    url_read_fcn = @(f,u)websave(f,u);
+    url_read_alt = @(f,u)urlwrite(u,f);
 end
-
+% Read online version.txt
+errMsg = '';
+try
+    url_read_fcn(filename, url);
+catch
+    err = lasterror;
+    try
+        url_read_alt(filename, url);
+    catch
+        errMsg = ['websave and urlwrite failed reading URL: ' url 10 str_striptag(err.message)];
+        disp(['BST> ERROR: ' errMsg]);
+    end
+end
