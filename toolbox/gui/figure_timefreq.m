@@ -625,6 +625,7 @@ function CenterViewOnCursor(hFig)
         
         % Update position
         set(hAxes(i), 'XLim', XLim, 'YLim', YLim);
+        UpdateAxesTicks(hAxes(i));
     end
 end
 
