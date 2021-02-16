@@ -44,7 +44,7 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.nInputs     = 1;
     sProcess.nMinFiles   = 1;
     % Options: Normalization
-    sProcess.options.normalize.Comment = {'1/f compensation (multiply power by frequency)', '<FONT color="#a0a0a0">1/f<SUP>2</SUP> compensation (default before Nov 2020)</FONT>', 'Relative power (divide by total power)'; ...
+    sProcess.options.normalize.Comment = {'1/f compensation (multiply power by frequency)', '<FONT color="#a0a0a0">1/f<SUP>2</SUP> compensation (named 1/f before Nov 2020)</FONT>', 'Relative power (divide by total power)'; ...
                                           'multiply2020', 'multiply', 'relative2020'};
     sProcess.options.normalize.Type    = 'radio_label';
     sProcess.options.normalize.Value   = 'multiply2020';
