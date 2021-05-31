@@ -31,7 +31,8 @@ function varargout = bst_process( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2010-2019; Martin Cousineau, 2017
+% Authors: Francois Tadel, 2010-2021
+%          Martin Cousineau, 2017
 
 eval(macro_method);
 end
@@ -433,6 +434,10 @@ function OutputFile = ProcessFilter(sProcess, sInput)
     else
         TFmask = [];
     end
+    % Get TF options
+    if isfield(sMat, 'Options') && ~isempty(sMat.Options)
+        sInput.Options = sMat.Options;
+    end
     
     % Progress bar comment
     txtProgress = ['Running process: ' sProcess.Comment '...'];
@@ -473,9 +478,9 @@ function OutputFile = ProcessFilter(sProcess, sInput)
         end
         % ERROR: Cannot process channel/channel uncompensated CTF files
         if ismember(1,sProcess.processDim) && ~isReadAll && ismember(sFileIn.format, {'CTF','CTF-CONTINUOUS'}) && ...
-                (sFileIn.prop.currCtfComp ~= 3) && (isempty(AllSensorTypes) || any(ismember(AllSensorTypes, {'MEG','MEG REF','MEG GRAD','MEG MAG'})))
+                (sFileIn.prop.currCtfComp ~= sFileIn.prop.destCtfComp) && (isempty(AllSensorTypes) || any(ismember(AllSensorTypes, {'MEG','MEG REF','MEG GRAD','MEG MAG'})))
             bst_report('Error', sProcess, sInput, [...
-                'This CTF file was not saved with the 3rd order compensation.' 10 ...
+                'This CTF file was not saved with the desired compensation order (', num2str(sFileIn.prop.destCtfComp), ').' 10 ...
                 'To process this file, you have the following options: ' 10 ...
                 '  1) Check the option "Process the entire file at once", only if the entire file fits in memory.' 10 ...
                 '  2) Run the process "Artifacts > Apply SSP & CTF compensation" first to save a compensated file.']);
@@ -967,6 +972,10 @@ function OutputFile = ProcessFilter(sProcess, sInput)
     % TFmask
     if isfield(sMat, 'TFmask')
         sMat.TFmask = OutputTFmask;
+    end
+    % TF options
+    if isfield(sMat, 'Options') && isfield(sInput, 'Options') && ~isempty(sInput.Options)
+        sMat.Options = sInput.Options;
     end
     % Comment: forced in the options
     if isfield(sProcess.options, 'Comment') && isfield(sProcess.options.Comment, 'Value') && ~isempty(sProcess.options.Comment.Value)
@@ -1744,13 +1753,21 @@ end
 
 
 %% ===== GET NEW FILENAME =====
-function filename = GetNewFilename(fPath, fBase)
+function filename = GetNewFilename(fPath, fBase, isTimestamp)
+    % Parse inputs 
+    if (nargin < 3) || isempty(isTimestamp)
+        isTimestamp = 1;
+    end
     % Folder
     ProtocolInfo = bst_get('ProtocolInfo');
     fPath = strrep(fPath, ProtocolInfo.STUDIES, '');
     % Date and time
-    c = clock;
-    strTime = sprintf('_%02.0f%02.0f%02.0f_%02.0f%02.0f', c(1)-2000, c(2:5));
+    if isTimestamp
+        c = clock;
+        strTime = sprintf('_%02.0f%02.0f%02.0f_%02.0f%02.0f', c(1)-2000, c(2:5));
+    else
+        strTime = '';
+    end
     % Remove extension
     fBase = strrep(fBase, '.mat', '');
     % Full filename
@@ -1775,8 +1792,8 @@ function FileTag = GetFileTag(FileName)
         case {'timefreq', 'ptimefreq'}
             FileTag = FileType;
             listTags = {'_fft', '_psd', '_hilbert', ...
-                        '_connect1_corr', '_connect1_cohere', '_connect1_granger', '_connect1_spgranger', '_connect1_plv', '_connect1_plvt', '_connect1', ...
-                        '_connectn_corr', '_connectn_cohere', '_connectn_granger', '_connectn_spgranger', '_connectn_plv', '_connectn_plvt', '_connectn', ...
+                        '_connect1_corr', '_connect1_cohere', '_connect1_granger', '_connect1_spgranger', '_connect1_plv', '_connect1_plvt', '_connect1', '_connect1_henv', ...
+                        '_connectn_corr', '_connectn_cohere', '_connectn_granger', '_connectn_spgranger', '_connectn_plv', '_connectn_plvt', '_connectn', '_connectn_henv', ...
                         '_pac_fullmaps', '_pac', '_dpac_fullmaps', '_dpac'};
             for i = 1:length(listTags)
                 if ~isempty(strfind(FileName, listTags{i}))

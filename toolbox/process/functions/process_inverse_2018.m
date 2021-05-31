@@ -256,6 +256,11 @@ function [OutputFiles, errMessage] = Compute(iStudies, iDatas, OPTIONS)
                 errMessage = 'Cannot compute shared kernels with this method.';
                 return
             end
+            % Install/load brainentropy plugin
+            [isInstalled, errMessage] = bst_plugin('Install', 'brainentropy', 1);
+            if ~isInstalled
+                return;
+            end
             % Default options
             MethodOptions = be_main();
             % Interface to edit options
@@ -368,6 +373,12 @@ function [OutputFiles, errMessage] = Compute(iStudies, iDatas, OPTIONS)
             for i = 1:length(iRelatedStudies)
                 % Get data file
                 sStudyRel = bst_get('Study', iRelatedStudies(i));
+                % If bad trial: don't take it into consideration
+                if (sStudyRel.Data(iRelatedData(i)).BadTrial)
+                    nAvgAll(i) = Inf;
+                    LeffAll(i) = Inf;
+                    continue;
+                end
                 % Read bad channels and nAvg
                 DataMat = in_bst_data(sStudyRel.Data(iRelatedData(i)).FileName, 'ChannelFlag', 'nAvg', 'Leff');
                 if isfield(DataMat, 'nAvg') && ~isempty(DataMat.nAvg)

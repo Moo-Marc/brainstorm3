@@ -104,6 +104,7 @@ function [bstPanelNew, panelName] = CreatePanel(isMeg, isEeg, isEcog, isSeeg, is
         % Combobox
         jComboMethodECOG = gui_component('ComboBox', jPanelMethod, 'tab hfill', [], [], [], @UpdateComment, []);
         jComboMethodECOG.addItem(BstListItem('openmeeg', '', 'OpenMEEG BEM', []));
+        jComboMethodECOG.addItem(BstListItem('duneuro', '', 'DUNEuro FEM', []));
         jComboMethodECOG.setSelectedIndex(0);
     else
         jCheckMethodECOG = [];
@@ -117,6 +118,7 @@ function [bstPanelNew, panelName] = CreatePanel(isMeg, isEeg, isEcog, isSeeg, is
         % Combobox
         jComboMethodSEEG = gui_component('ComboBox', jPanelMethod, 'tab hfill', [], [], [], @UpdateComment, []);
         jComboMethodSEEG.addItem(BstListItem('openmeeg', '', 'OpenMEEG BEM', []));
+        jComboMethodSEEG.addItem(BstListItem('duneuro', '', 'DUNEuro FEM', []));
         jComboMethodSEEG.setSelectedIndex(0);
     else
         jCheckMethodSEEG = [];
@@ -654,14 +656,16 @@ function [OutputFiles, errMessage] = ComputeHeadModel(iStudies, sMethod) %#ok<DE
                 return;
             end
             OPTIONS.FemFile = file_fullpath(sSubject.Surface(sSubject.iFEM(1)).FileName);
-            % Let user edit DUNEuro options
-            DuneuroOptions = gui_show_dialog('DUNEuro options', @panel_duneuro, 1, [], OPTIONS);
-            if isempty(DuneuroOptions)
-                bst_progress('stop');
-                return;
+            % Interactive interface to set the OpenMEEG options
+            if OPTIONS.Interactive
+                DuneuroOptions = gui_show_dialog('DUNEuro options', @panel_duneuro, 1, [], OPTIONS);
+                if isempty(DuneuroOptions)
+                    bst_progress('stop');
+                    return;
+                end
+                % Copy the selected options to the OPTIONS structure
+                OPTIONS = struct_copy_fields(OPTIONS, DuneuroOptions, 1);
             end
-            % Copy the selected options to the OPTIONS structure
-            OPTIONS = struct_copy_fields(OPTIONS, DuneuroOptions, 1);
         end
         
         % ===== COMPUTE HEADMODEL =====

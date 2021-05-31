@@ -25,7 +25,7 @@ function mneInfo = out_mne_channel(ChannelFile, iChannels)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2019
+% Authors: Francois Tadel, 2021
 
 
 %% ===== PARSE INPUT =====
@@ -78,6 +78,8 @@ if ~isempty(ChannelFile) && (isempty(ChannelMat.SCS) || isempty(ChannelMat.SCS.N
         ChannelMat.SCS.NAS = cs_convert(sMri, 'mri', 'scs', sMri.SCS.NAS ./ 1000);
         ChannelMat.SCS.LPA = cs_convert(sMri, 'mri', 'scs', sMri.SCS.LPA ./ 1000);
         ChannelMat.SCS.RPA = cs_convert(sMri, 'mri', 'scs', sMri.SCS.RPA ./ 1000);
+    else
+        
     end
 end
 
@@ -89,10 +91,10 @@ ch_types = cell(1, length(iChannels));
 ch_frame = cell(1, length(iChannels));
 for iChan = 1:length(iChannels)
     switch upper(ChannelMat.Channel(iChannels(iChan)).Type)
-        case 'MEG MAG'
+        case {'MEG', 'MEG MAG'}
             ch_types{iChan} = 'mag';
             ch_frame{iChan} = FIFF.FIFFV_COORD_DEVICE;
-        case {'MEG', 'MEG GRAD'}
+        case {'MEG GRAD'}
             ch_types{iChan} = 'grad';
             ch_frame{iChan} = FIFF.FIFFV_COORD_DEVICE;
         case 'MEG REF'
@@ -117,7 +119,7 @@ mneInfo{'creator'} = ['Brainstorm ', bstver.Version, ' (', bstver.Date ')'];
 % Get existing transformation
 tNeuromagHead2Bst = [];
 tDev2NeuromagHead = [];
-tBst2CtfHead = [];
+% tBst2CtfHead = [];
 tCtfHead2Dev = [];
 if ~isempty(ChannelMat.TransfMeg) && ~isempty(ChannelMat.TransfMegLabels)
     % NEUROMAG=>BST
@@ -125,10 +127,19 @@ if ~isempty(ChannelMat.TransfMeg) && ~isempty(ChannelMat.TransfMegLabels)
     if ~isempty(iNeuromagHead2Bst)
         tNeuromagHead2Bst = ChannelMat.TransfMeg{iNeuromagHead2Bst};
     end
-    % DEVICE=>NEUROMAG HEAD
+    % DEVICE=>NEUROMAG HEAD ('dev_head_t')
     iDev2NeuromagHead = find(strcmpi(ChannelMat.TransfMegLabels, 'neuromag_device=>neuromag_head'));
     if ~isempty(iDev2NeuromagHead)
-        tDev2NeuromagHead = inv(ChannelMat.TransfMeg{iDev2NeuromagHead});
+        tDev2NeuromagHead = ChannelMat.TransfMeg{iDev2NeuromagHead};
+        % Warning: We should NOT export 'dev_head_t', if it was not present initially in the dataset
+        %          In the FIF-reading function (in_channel_fif, in_channel_name, in_fopenmegscan), when the device=>head transformation 
+        %          transformation is missing (e.g. noise recordings), Brainstorm adds a default +4cm translation for display purproses.
+        %          This should not be exported, because it messes up the behavior of specific MNE functions (e.g. maxwell_filter)
+        isDefaultDev2head = isequal(tDev2NeuromagHead, ...
+            [1   0   0   0; ...
+             0   1   0   0; ...
+             0   0   1 .04; ...
+             0   0   0   1]);
     end
 %     % CTF=>BST
 %     iCtfHead2Bst = find(strcmpi(ChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF'));
@@ -154,8 +165,14 @@ if ~isempty(tNeuromagHead2Bst) && ~isempty(tDev2NeuromagHead)
     ChannelMat = ApplyTransformation(ChannelMat, inv(tNeuromagHead2Bst), [], 1);
     % NEUROMAG HEAD => NEUROMAG DEVICE (MEG ONLY)
     ChannelMat = ApplyTransformation(ChannelMat, inv(tDev2NeuromagHead), {'MEG', 'MEG REF', 'MEG GRAD', 'MEG MAG'}, 0);
-    % Save in info structure
-    mneInfo{'dev_head_t'}{'trans'}.put(int16(0:15), bst_mat2py(tDev2NeuromagHead));
+    % If there is a Neuromag head transformation available: add it to the file
+    if ~isDefaultDev2head
+        mneInfo{'dev_head_t'}{'trans'}.put(int16(0:15), bst_mat2py(tDev2NeuromagHead));
+    % Otherwise: Brainstorm added a transformation that did not exist initially 
+    % => do not add it to the python object + remove the default identity transformation in mneInfo
+    else
+        mneInfo{'dev_head_t'} = py.None;
+    end
     
 % ===== USE CTF/BRAINSTORM COORDINATES =====
 else
@@ -166,60 +183,62 @@ else
 %     end
     
     % === Compute transformations from CTF to Neuromag ===
-    % Create list of coils
-    coils = py.list();
-    % NAS (head coordinates)
-    coils.append(py.dict(struct(...
-        'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_HEAD, ...
-        'kind',        CTF.CTFV_COIL_NAS, ...
-        'valid',       py.True, ...
-        'r',           py.numpy.array(ChannelMat.SCS.NAS))));
-    % LPA (head coordinates)
-    coils.append(py.dict(struct(...
-        'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_HEAD, ...
-        'kind',        CTF.CTFV_COIL_LPA, ...
-        'valid',       py.True, ...
-        'r',           py.numpy.array(ChannelMat.SCS.LPA))));
-    % RPA (head coordinates)
-    coils.append(py.dict(struct(...
-        'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_HEAD, ...
-        'kind',        CTF.CTFV_COIL_RPA, ...
-        'valid',       py.True, ...
-        'r',           py.numpy.array(ChannelMat.SCS.RPA))));
-    % NAS (device coordinates)
-    coils.append(py.dict(struct(...
-        'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_DEVICE, ...
-        'kind',        CTF.CTFV_COIL_NAS, ...
-        'valid',       py.True, ...
-        'r',           py.numpy.array(Tmult(ChannelMat.SCS.NAS', tCtfHead2Dev)'))));
-    % LPA (device coordinates)
-    coils.append(py.dict(struct(...
-        'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_DEVICE, ...
-        'kind',        CTF.CTFV_COIL_LPA, ...
-        'valid',       py.True, ...
-        'r',           py.numpy.array(Tmult(ChannelMat.SCS.LPA', tCtfHead2Dev)'))));
-    % RPA (device coordinates)
-    coils.append(py.dict(struct(...
-        'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_DEVICE, ...
-        'kind',        CTF.CTFV_COIL_RPA, ...
-        'valid',       py.True, ...
-        'r',           py.numpy.array(Tmult(ChannelMat.SCS.RPA', tCtfHead2Dev)'))));
-    % Compute transformations
-    workspace = py.dict(struct('coils', coils));
-    py.exec('import mne', workspace);
-    py.exec('coord_trans = mne.io.ctf.trans._make_ctf_coord_trans_set(None,coils)', workspace);
-    % Save transformations
-    coord_trans = workspace{'coord_trans'};
-    mneInfo{'ctf_head_t'} = coord_trans{'t_ctf_head_head'};
-    mneInfo{'dev_head_t'} = coord_trans{'t_dev_head'};
-    mneInfo{'dev_ctf_t'} = py.mne.transforms.combine_transforms(...
-            coord_trans{'t_dev_head'}, ...
-            py.mne.transforms.invert_transform(coord_trans{'t_ctf_head_head'}), ...
-            FIFF.FIFFV_COORD_DEVICE, FIFF.FIFFV_MNE_COORD_CTF_HEAD);
-    % CTF HEAD => NEUROMAG HEAD (all data)
-    ChannelMat = ApplyTransformation(ChannelMat, bst_py2mat(mneInfo{'ctf_head_t'}{'trans'}), [], 1);
-    % NEUROMAG HEAD => NEUROMAG DEVICE (MEG ONLY)
-    ChannelMat = ApplyTransformation(ChannelMat, inv(bst_py2mat(mneInfo{'dev_head_t'}{'trans'})), {'MEG', 'MEG REF', 'MEG GRAD', 'MEG MAG'}, 0);
+    if ~isempty(ChannelMat.SCS.NAS) && ~isempty(ChannelMat.SCS.LPA) && ~isempty(ChannelMat.SCS.RPA)
+        % Create list of coils
+        coils = py.list();
+        % NAS (head coordinates)
+        coils.append(py.dict(struct(...
+            'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_HEAD, ...
+            'kind',        CTF.CTFV_COIL_NAS, ...
+            'valid',       py.True, ...
+            'r',           py.numpy.array(ChannelMat.SCS.NAS))));
+        % LPA (head coordinates)
+        coils.append(py.dict(struct(...
+            'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_HEAD, ...
+            'kind',        CTF.CTFV_COIL_LPA, ...
+            'valid',       py.True, ...
+            'r',           py.numpy.array(ChannelMat.SCS.LPA))));
+        % RPA (head coordinates)
+        coils.append(py.dict(struct(...
+            'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_HEAD, ...
+            'kind',        CTF.CTFV_COIL_RPA, ...
+            'valid',       py.True, ...
+            'r',           py.numpy.array(ChannelMat.SCS.RPA))));
+        % NAS (device coordinates)
+        coils.append(py.dict(struct(...
+            'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_DEVICE, ...
+            'kind',        CTF.CTFV_COIL_NAS, ...
+            'valid',       py.True, ...
+            'r',           py.numpy.array(Tmult(ChannelMat.SCS.NAS', tCtfHead2Dev)'))));
+        % LPA (device coordinates)
+        coils.append(py.dict(struct(...
+            'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_DEVICE, ...
+            'kind',        CTF.CTFV_COIL_LPA, ...
+            'valid',       py.True, ...
+            'r',           py.numpy.array(Tmult(ChannelMat.SCS.LPA', tCtfHead2Dev)'))));
+        % RPA (device coordinates)
+        coils.append(py.dict(struct(...
+            'coord_frame', FIFF.FIFFV_MNE_COORD_CTF_DEVICE, ...
+            'kind',        CTF.CTFV_COIL_RPA, ...
+            'valid',       py.True, ...
+            'r',           py.numpy.array(Tmult(ChannelMat.SCS.RPA', tCtfHead2Dev)'))));
+        % Compute transformations
+        workspace = py.dict(struct('coils', coils));
+        py.exec('import mne', workspace);
+        py.exec('coord_trans = mne.io.ctf.trans._make_ctf_coord_trans_set(None,coils)', workspace);
+        % Save transformations
+        coord_trans = workspace{'coord_trans'};
+        mneInfo{'ctf_head_t'} = coord_trans{'t_ctf_head_head'};
+        mneInfo{'dev_head_t'} = coord_trans{'t_dev_head'};
+        mneInfo{'dev_ctf_t'} = py.mne.transforms.combine_transforms(...
+                coord_trans{'t_dev_head'}, ...
+                py.mne.transforms.invert_transform(coord_trans{'t_ctf_head_head'}), ...
+                FIFF.FIFFV_COORD_DEVICE, FIFF.FIFFV_MNE_COORD_CTF_HEAD);
+        % CTF HEAD => NEUROMAG HEAD (all data)
+        ChannelMat = ApplyTransformation(ChannelMat, bst_py2mat(mneInfo{'ctf_head_t'}{'trans'}), [], 1);
+        % NEUROMAG HEAD => NEUROMAG DEVICE (MEG ONLY)
+        ChannelMat = ApplyTransformation(ChannelMat, inv(bst_py2mat(mneInfo{'dev_head_t'}{'trans'})), {'MEG', 'MEG REF', 'MEG GRAD', 'MEG MAG'}, 0);
+    end
 end
 
 
@@ -341,7 +360,7 @@ if ~isempty(ChannelMat.Projector)
             pyProj{'data'}              = py.dict();
             pyProj{'data'}{'nrow'}      = py.int(1);
             pyProj{'data'}{'ncol'}      = py.int(length(iChannels));
-            pyProj{'data'}{'row_names'} = py.NoneType;
+            pyProj{'data'}{'row_names'} = py.None;
             pyProj{'data'}{'col_names'} = py.list({ChannelMat.Channel(iChannels).Name});
             pyProj{'data'}{'data'}      = py.numpy.array(ChannelMat.Projector(iProj).Components(iChannels,selComp(iComp))', pyargs('ndmin', py.int(2)));
             % Add to list of projectors

@@ -142,7 +142,7 @@ function Start() %#ok<DEFNU>
     ResetDataCollection();
     
     % Load beep sound
-    if exist('isdeployed', 'builtin') && isdeployed
+    if bst_iscompiled()
         wavfile = bst_fullfile(bst_get('BrainstormHomeDir'), 'toolbox', 'sensors', 'private', 'bst_beep_wav.mat');
         filemat = load(wavfile, 'wav');
         Digitize.BeepWav = filemat.wav;
@@ -960,7 +960,7 @@ function CreateHeadpointsFigure()
         % Get Digitizer JFrame
         bstContainer = get(bst_get('Panel','Digitize'), 'container');
         % Get maximum figure position
-        decorationSize = gui_layout('GetDecorationSize', bstContainer.handle{1});
+        decorationSize = bst_get('DecorationSize');
         [jBstArea, FigArea] = gui_layout('GetScreenBrainstormAreas', bstContainer.handle{1});
         FigPos = FigArea(1,:) + [decorationSize(1),  decorationSize(4),  - decorationSize(1) - decorationSize(3),  - decorationSize(2) - decorationSize(4)];
         if (FigPos(3) > 0) && (FigPos(4) > 0)
@@ -1423,7 +1423,7 @@ function BytesAvailable_Callback(h, ev) %#ok<INUSD>
     % Beep at each click AND not for headshape points
     if DigitizeOptions.isBeep 
         % Beep not working in compiled version, replacing with this:
-        if exist('isdeployed', 'builtin') && isdeployed && (Digitize.Mode ~= 8)
+        if bst_iscompiled() && (Digitize.Mode ~= 8)
             sound(Digitize.BeepWav(6000:2:16000,1), 22000);
         else
             beep on;

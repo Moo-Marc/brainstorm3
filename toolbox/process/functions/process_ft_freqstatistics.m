@@ -56,8 +56,13 @@ end
 function sOutput = Run(sProcess, sInputsA, sInputsB) %#ok<DEFNU>
     % Initialize returned variable 
     sOutput = [];
-    % Initialize fieldtrip
-    bst_ft_init();
+    % Initialize FieldTrip
+    [isInstalled, errMsg] = bst_plugin('Install', 'fieldtrip');
+    if ~isInstalled
+        bst_report('Error', sProcess, [], errMsg);
+        return;
+    end
+    bst_plugin('SetProgressLogo', 'fieldtrip');
     
     % ===== CHECK INPUTS =====
     % Make sure that file type is indentical for both sets
@@ -68,6 +73,11 @@ function sOutput = Run(sProcess, sInputsA, sInputsB) %#ok<DEFNU>
     % Check the number of files in input
     if (length(sInputsA) < 2) || (length(sInputsB) < 2)
         bst_report('Error', sProcess, sInputsA, 'Not enough files in input.');
+        return;
+    end
+    % Check that channel files are available
+    if any(cellfun(@isempty, {sInputsA.ChannelFile, sInputsB.ChannelFile}))
+        bst_report('Error', sProcess, sInputsA, 'Channel files are missing for the input files.');
         return;
     end
     
@@ -335,6 +345,7 @@ function sOutput = Run(sProcess, sInputsA, sInputsB) %#ok<DEFNU>
     sOutput.Options = OPT;
     % Last message
     bst_progress('text', 'Saving results...');
+    bst_plugin('SetProgressLogo', []);
 end
 
 

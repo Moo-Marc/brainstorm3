@@ -50,7 +50,7 @@ function [Histogram] = mri_histogram(volume, intensityMax, volumeType)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2006-2010
+% Authors: Francois Tadel, 2006-2020
 
 % Parameters
 if (nargin < 2)
@@ -81,7 +81,9 @@ if (intensityMax == 0)
 end
 
 % Histogram calculation
-[Histogram.fncY, Histogram.fncX] = hist(volume(:), 0:double(intensityMax));
+% Update 2021: Always forcing the use of 256 bins
+bins = linspace(0, double(intensityMax), 256);
+[Histogram.fncY, Histogram.fncX] = hist(volume(:), bins);
 Histogram.intensityMax = intensityMax;
 clear volume intensityMax;
 

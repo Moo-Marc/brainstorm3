@@ -289,7 +289,7 @@ function [OutputFiles, errMessage] = Compute(iStudies, iDatas, OPTIONS)
         return;
     end
 
-    
+                
     %% ===== SELECT INVERSE METHOD =====
     % Select method
     if OPTIONS.DisplayMessages
@@ -354,6 +354,11 @@ function [OutputFiles, errMessage] = Compute(iStudies, iDatas, OPTIONS)
                     errMessage = 'Cannot compute shared kernels with this method.';
                     return
                 end
+                % Install/load brainentropy plugin
+                [isInstalled, errMessage] = bst_plugin('Install', 'brainentropy', 1);
+                if ~isInstalled
+                    return;
+                end
                 % Default options
                 MethodOptions = be_main();
                 % Interface to edit options
@@ -393,6 +398,14 @@ function [OutputFiles, errMessage] = Compute(iStudies, iDatas, OPTIONS)
         case 'dspm',    methodTag = 'dSPM';
         case 'sloreta', methodTag = 'sLORETA';
         case 'mem',     methodTag = 'MEM';
+            % MEM incompatible with some options
+            if isShared
+                errMessage = 'Cannot compute shared kernels with this method.';
+                return
+            elseif ismember(HeadModelType, {'volume','mixed'})
+                errMessage = 'Volume and mixed head models are not compatible with this method.';
+                return
+            end
     end
 
     %% ===== COMMENT =====

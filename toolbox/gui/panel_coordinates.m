@@ -328,7 +328,7 @@ function vi = SelectPoint(hFig, AcceptMri) %#ok<DEFNU>
             % Get MRI
             sMri = bst_memory('GetMri', TessInfo(iTess).SurfaceFile);
             
-        case {'Scalp', 'InnerSkull', 'OuterSkull', 'Cortex', 'Other'}
+        case {'Scalp', 'InnerSkull', 'OuterSkull', 'Cortex', 'Other', 'FEM'}
             sSurf = bst_memory('GetSurface', TessInfo(iTess).SurfaceFile);
             scsLoc = sSurf.Vertices(vi,:);
             plotLoc = vout;
@@ -347,7 +347,7 @@ function vi = SelectPoint(hFig, AcceptMri) %#ok<DEFNU>
                 end
             end
             % Get subject
-            sSubject = bst_get('SurfaceFile', TessInfo(iTess).SurfaceFile);
+            sSubject = bst_get('Subject', getappdata(hFig, 'SubjectFile'));
             % == GET MRI ==
             % If subject has a MRI defined
             if ~isempty(sSubject.iAnatomy)
@@ -499,18 +499,10 @@ function ViewInMriViewer(varargin)
     if isempty(sSubject) || isempty(sSubject.iAnatomy)
         return 
     end
-    % Progress bar
-    bst_progress('start', 'MRI Viewer', 'Opening MRI Viewer...');
-    % Get protocol directories
-    ProtocolInfo = bst_get('ProtocolInfo');
-    % MRI full filename
-    MriFile = bst_fullfile(ProtocolInfo.SUBJECTS, sSubject.Anatomy(sSubject.iAnatomy).FileName);
     % Display subject's anatomy in MRI Viewer
-    hFig = view_mri(MriFile);
+    hFig = view_mri(sSubject.Anatomy(sSubject.iAnatomy).FileName);
     % Select the required point
     figure_mri('SetLocation', 'mri', hFig, [], CoordinatesSelector.MRI);
-    % Close progress bar
-    bst_progress('stop');
 end
 
 
