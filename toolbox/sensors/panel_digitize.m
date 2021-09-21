@@ -39,7 +39,7 @@ end
 %#function icinterface
 
 %% ===== START =====
-function Start() %#ok<DEFNU>
+function Start() 
     global Digitize;
     % ===== PREPARE DATABASE =====
     % If no protocol: exit
@@ -95,7 +95,7 @@ function Start() %#ok<DEFNU>
             'headshape',[], ...
             'trans',    []));
     % Start Serial Connection
-    if ~CreateSerialConnection();
+    if ~CreateSerialConnection()
         return;
     end
     
@@ -155,7 +155,7 @@ end
 %  ========================================================================
 
 %% ===== CREATE PANEL =====
-function [bstPanelNew, panelName] = CreatePanel() %#ok<DEFNU>
+function [bstPanelNew, panelName] = CreatePanel() 
     % Constants
     panelName = 'Digitize';
     % Java initializations
@@ -320,11 +320,12 @@ end
 
 %% ===== CLOSE =====
 function Close_Callback()
+    % TODO: close serial connection to avoid further callbacks if stylus is pressed.
     gui_hide('Digitize');
 end
 
 %% ===== HIDING CALLBACK =====
-function isAccepted = PanelHidingCallback() %#ok<DEFNU>
+function isAccepted = PanelHidingCallback() 
     global Digitize;
     % If Brainstorm window was hidden before showing the Digitizer
     if bst_get('isGUI')
@@ -405,7 +406,7 @@ end
 
 %% ===== SET SIMULATION MODE =====
 % USAGE:  panel_digitize('SetSimulate', isSimulate)
-function SetSimulate(isSimulate) %#ok<DEFNU>
+function SetSimulate(isSimulate) 
     % Get options
     DigitizeOptions = bst_get('DigitizeOptions');
     % Change value
@@ -685,10 +686,10 @@ function UpdateList()
     ctrl.jListCoord.repaint();
     drawnow;
     % Scroll down
-    lastIndex = min(listModel.getSize(), 12 + nRecEEG + nHeadShape);
-    selRect = ctrl.jListCoord.getCellBounds(lastIndex-1, lastIndex-1);
+    %lastIndex = min(listModel.getSize(), 12 + nRecEEG + nHeadShape);
+    %selRect = ctrl.jListCoord.getCellBounds(lastIndex-1, lastIndex-1);
     %ctrl.jListCoord.scrollRectToVisible(selRect);
-    ctrl.jListCoord.repaint();
+    %ctrl.jListCoord.repaint();
     ctrl.jListCoord.getParent().getParent().repaint();
 end
 
@@ -736,7 +737,7 @@ function ManualCollect_Callback(h, ev)
     % Else: Send a collection request to the Polhemus
     else
         % User clicked the button, collect a point
-        fprintf(Digitize.SerialConnection,'%s','P');
+        fprintf(Digitize.SerialConnection,'P');
         pause(0.2);
     end
 end
@@ -1019,7 +1020,7 @@ function EEGChangePoint_Callback(h, ev) %#ok<INUSD>
     % Get controls
     ctrl = bst_get('PanelControls', 'Digitize');
     % Get digitize options
-    DigitizeOptions = bst_get('DigitizeOptions');
+    %DigitizeOptions = bst_get('DigitizeOptions');
     
     initPoint = str2num(ctrl.jTextFieldEEG.getText());
     % restrict to a maximum of points collected or defined max points and minimum of '1'
@@ -1044,7 +1045,7 @@ end
 function Save_Callback(h, ev) %#ok<INUSD>
     global Digitize
     sStudy = bst_get('StudyWithCondition', [Digitize.SubjectName '/' Digitize.ConditionName]);
-    ChannelFile = file_fullpath(sStudy.Channel.FileName);  
+    ChannelFile = file_fullpath(sStudy.Channel.FileName);
     export_channel( ChannelFile );
 end
 
@@ -1298,7 +1299,7 @@ end
 
 %% ===== CREATE SERIAL COLLECTION =====
 function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
-    global Digitize
+    global Digitize 
     isOk = 0;
     while ~isOk
         % Get COM port options
@@ -1314,6 +1315,7 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
             fclose(s);
         end
         % Create connection
+%         DigitizeOptions.ComRate = 115200;
         SerialConnection = serial(DigitizeOptions.ComPort, 'BaudRate', DigitizeOptions.ComRate);
         if strcmp(DigitizeOptions.UnitType,'patriot')
             SerialConnection.terminator = 'CR';
@@ -1322,18 +1324,60 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
         SerialConnection.BytesAvailableFcnCount = DigitizeOptions.ComByteCount;
         SerialConnection.BytesAvailableFcnMode  = 'byte';
         SerialConnection.BytesAvailableFcn      = @BytesAvailable_Callback;
+%         SerialConnection.BytesAvailableFcn      = @BytesAvailableDebug_Callback;
         if (strcmp(SerialConnection.status,'closed'))
             try
                 % Open connection
                 fopen(SerialConnection); 
                 if strcmp(DigitizeOptions.UnitType,'fastrak')
-                    % Set units to centimeters
-                    fprintf(SerialConnection,'%s','u');
+                    %'c' - Disable Continuous Printing
+                    % Required for some configuration options.
+                    fprintf(SerialConnection,'c');
+                    %'u' - Metric Conversion Units (set units to cm)
+                    fprintf(SerialConnection,'u');
+                    %'F' - Enable ASCII Output Format
+                    fprintf(SerialConnection,'F');
+                    %'R' - Reset Alignment Reference Frame
+                    fprintf(SerialConnection,'R1');
+                    fprintf(SerialConnection,'R2');
+                    %'A' - Alignment Reference Frame
+                    %'H' - Hemisphere of Operation
+                    fprintf(SerialConnection,'H1,0,0,-1'); % -Z hemisphere
+                    fprintf(SerialConnection,'H2,0,0,-1'); % -Z hemisphere
+                    %'l' - Active Station State
+                    % Could check here if 1 and 2 are active.
+                    %'N' - Define Tip Offsets % Always factory default on power-up.
+                    %    fprintf(SerialConnection,'N1'); data = fscanf(SerialConnection)
+                    %    data = '21N  6.344  0.013  0.059
+                    %'O' - Output Data List
+                    fprintf(SerialConnection,'O1,2,4,1'); % default precision: position, Euler angles, CRLF
+                    fprintf(SerialConnection,'O2,2,4,1'); % default precision: position, Euler angles, CRLF
+                    %fprintf(SerialConnection,'O1,52,54,51'); % extended precision: position, Euler angles, CRLF
+                    %fprintf(SerialConnection,'O2,52,54,51'); % extended precision: position, Euler angles, CRLF
+                    %'Q' - Angular Operational Envelope
+                    fprintf(SerialConnection,'Q1,180,90,180,-180,-90,-180');
+                    fprintf(SerialConnection,'Q2,180,90,180,-180,-90,-180');
+                    %'V' - Position Operational Envelope
+                    % Could use to warn if too far.
+                    fprintf(SerialConnection,'V1,100,100,100,-100,-100,-100');
+                    fprintf(SerialConnection,'V2,100,100,100,-100,-100,-100');
+                    %'x' - Position Filter Parameters
+                    % The macro setting used here also applies to attitude filtering.
+                    % 1=none, 2=low, 3=medium (default), 4=high
+                    fprintf(SerialConnection,'x3');
+                    
+                    %'e' - Define Stylus Button Function
+                    fprintf(SerialConnection,'e1,1'); % Point mode
+                    
+                    %'^K' - *Save Operational Configuration
+                    % 'ctrl+K' = char(11)
+                    %'^Y' - *Reinitialize System
+                    % 'ctrl+Y' = char(25)
                 elseif strcmp(DigitizeOptions.UnitType,'patriot')
                     % request input from stylus
-                    fprintf(SerialConnection,'%s\r','L1,1');
+                    fprintf(SerialConnection,'L1,1\r');
                     % Set units to centimeters
-                    fprintf(SerialConnection,'%s\r','U1');
+                    fprintf(SerialConnection,'U1\r');
                 end
                 pause(0.2);
             catch %#ok<CTCH>
@@ -1343,7 +1387,7 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
                 isChanged = EditSettings();
                 % If edit was canceled: exit
                 if ~isChanged
-                    SerialConnection = [];
+                    %SerialConnection = [];
                     return
                 % If not, try again
                 else
@@ -1357,6 +1401,12 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
     end
 end
 
+
+%% Debug callback
+% function BytesAvailableDebug_Callback(h, ev) %#ok<INUSD>
+%     global Digitize
+%     data = fscanf(Digitize.SerialConnection)
+% end
 
 %% ===== BYTES AVAILABLE CALLBACK =====
 function BytesAvailable_Callback(h, ev) %#ok<INUSD>

@@ -181,6 +181,9 @@ if isWarp
         if isempty(PosFile)
             return;
         end
+        % Save default import directory
+        LastUsedDirs.ImportChannel = bst_fileparts(PosFile);
+        bst_set('LastUsedDirs', LastUsedDirs);
     end
     % Read POS file and channel file
     HeadMat = in_channel_pos(PosFile);

@@ -4,7 +4,7 @@ function export_channel( BstChannelFile, OutputChannelFile, FileFormat)
 % USAGE:  export_channel( BstChannelFile, OutputChannelFile=[ask], FileFormat=[ask])
 %
 % INPUT: 
-%     - BstChannelFile    : Full path to input Brainstorm MRI file to be exported
+%     - BstChannelFile    : Full path to input Brainstorm file to be exported
 %     - OutputChannelFile : Full path to target file (extension will determine the format)
 %     - FileFormat        : String, format of the exported channel file
 
@@ -62,6 +62,11 @@ if isempty(OutputChannelFile)
     % Default output filename
     if (iSubject == 0) || isequal(sSubject.UseDefaultChannel, 2)
         baseFile = 'channel';
+    elseif strcmpi(DefaultExt, '.pos')
+        % When digitizing head points, use condition name instead of subject name, which is always "Digitize".
+        [BstPath, baseFile] = bst_fileparts(BstChannelFile);
+        baseFile = strrep(baseFile, 'channel_', '');
+        baseFile = strrep(baseFile, '_channel', '');
     else
         baseFile = sSubject.Name;
     end
