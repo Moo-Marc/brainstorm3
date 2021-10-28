@@ -83,7 +83,7 @@ tmpDir = bst_get('BrainstormTmpDir');
 [filePath, fileBase, fileExt] = bst_fileparts(DataFile);
 % Reading as raw continuous?
 isRaw = ismember(FileFormat, {'FIF', 'CTF', 'CTF-CONTINUOUS', '4D', 'KIT', 'RICOH', 'KDF', 'ITAB', ...
-    'MEGSCAN-HDF5', 'EEG-ANT-CNT', 'EEG-ANT-MSR', 'EEG-BRAINAMP', 'EEG-DELTAMED', 'EEG-COMPUMEDICS-PFS', ...
+    'MEGSCAN-HDF5', 'EEG-ANT-CNT', 'EEG-ANT-MSR', 'EEG-AXION', 'EEG-BRAINAMP', 'EEG-DELTAMED', 'EEG-COMPUMEDICS-PFS', ...
     'EEG-EGI-RAW', 'EEG-NEUROSCAN-CNT', 'EEG-NEUROSCAN-EEG', 'EEG-NEUROSCAN-AVG', 'EEG-EDF', 'EEG-BDF', ...
     'EEG-EEGLAB', 'EEG-GTEC', 'EEG-MANSCAN', 'EEG-MICROMED', 'EEG-NEURALYNX', 'EEG-BLACKROCK', 'EEG-RIPPLE', 'EEG-NEURONE', ...
     'EEG-NEUROSCOPE', 'EEG-NICOLET', 'EEG-NK', 'EEG-SMR', 'EEG-SMRX', 'SPM-DAT', 'NIRS-BRS', 'BST-DATA', 'BST-BIN', ...
@@ -301,7 +301,8 @@ if isRaw
             ImportOptions.BaselineRange = initBaselineRange - BlocksToRead(iFile).TimeOffset;
         end
         % Read data block
-        [F, TimeVector] = in_fread(sFile, ChannelMat, BlocksToRead(iFile).iEpoch, BlocksToRead(iFile).iTimes, [], ImportOptions);
+        [F, TimeVector,DisplayUnits] = in_fread(sFile, ChannelMat, BlocksToRead(iFile).iEpoch, BlocksToRead(iFile).iTimes, [], ImportOptions);
+        
         % If block too small: ignore it
         if (size(F,2) < 3)
             disp(sprintf('BST> Block is too small #%03d: ignoring...', iFile));
@@ -318,6 +319,7 @@ if isRaw
         DataMat.Time     = TimeVector;
         DataMat.Device   = sFile.device;
         DataMat.nAvg     = double(BlocksToRead(iFile).nAvg);
+        DataMat.DisplayUnits = DisplayUnits;
         DataMat.DataType = 'recordings';
         % Channel flag
         if ~isempty(BlocksToRead(iFile).ChannelFlag) 
