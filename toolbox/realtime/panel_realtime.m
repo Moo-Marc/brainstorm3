@@ -318,7 +318,7 @@ function InitFieldtripBuffer_Callback(h, ev)
             error('Cannot find the FieldTrip Directory');
         end
     else
-        ft_dir = bst_fullfile(fileparts(bst_dir),d.name);
+        ft_dir = bst_fullfile(fileparts(bst_dir),d(1).name);
     end
     ft_rtbuffer = bst_fullfile(ft_dir, 'realtime', 'src', 'buffer', 'matlab');
     ft_io = bst_fullfile(ft_dir, 'fileio');
@@ -648,6 +648,7 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     % Head localization channels
     frHL = find(strcmpi({RealtimeChannelMat.Channel.Name},'HLC0011'));
     RTConfig.iHeadLocChan = frHL:frHL+8;
+    
     
     bst_progress('text', 'Checking data information');
     
