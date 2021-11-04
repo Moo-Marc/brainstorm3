@@ -1,14 +1,21 @@
-function bst_headtracking(varargin)
+function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
 % BST_HEADTRACKING: Displays a subject's head position in realtime; used
 % for quality control before recording MEG.
 %
-% USAGE:    bst_headtracking()              Defaults: isRealtimeAlign=0, hostIP='localhost' and TCPIP=1972
+% USAGE:    bst_headtracking()              Defaults: isRealtimeAlign=0, hostIP='localhost' and hostPort=1972
 %           bst_headtracking(isRealtimeAlign)
 %           bst_headtracking(isRealtimeAlign, hostIP, hostPort)
 %
 % Inputs:   isRealtimeAlign = [0,1], 1 turns on realtime alignment with saved headposition
 %           hostIP   = IP address of host computer (e.g. '10.0.0.1', or 'localhost')
+%               'localhost' will start the real-time buffer from Matlab with the buffer mex file.
+%               Specifying an IP will instead connect to an already initialized buffer (recommended).
 %           hostPort = TCP/IP port of host computer (e.g. 1972)
+%
+% Starting the Fieldtrip real-time buffer from outside Matlab is highly
+% recommended, e.g. with the stand-alone demo (buffer.exe on Windows), or on the
+% acquisition workstation, e.g. with ctf2ft_v3. The buffer mex file is buggy and
+% Matlab is unable to clear it when used to initialize the buffer.
 %
 % @=============================================================================
 % This function is part of the Brainstorm software:
@@ -33,29 +40,29 @@ function bst_headtracking(varargin)
 global isSaveAlignChannelFile
 %% ===== DEFAULT INPUTS ====
 
-% defaults
-isRealtimeAlign = 0;
-hostIP  = '10.0.0.2'; %'localhost';    % IP address of host computer
-hostPort = 1972;          % TPC/IP port of host computer
-PosFile = [];
-if nargin == 1
-    if strcmp(varargin{1},'RealtimeAlign')
-        isRealtimeAlign = 1;
-    end
-elseif nargin == 2
-    isRealtimeAlign = varargin{1};
-    hostIP  = varargin{2};
-elseif nargin == 3
-    isRealtimeAlign = varargin{1};
-    hostIP  = varargin{2};
-    hostPort   = varargin{3};
-elseif nargin == 4
-    isRealtimeAlign = varargin{1};
-    hostIP  = varargin{2};
-    hostPort   = varargin{3};
-    PosFile = varargin{4};   
+if nargin < 4 || isempty(PosFile)
+    PosFile = [];
 end
-
+if nargin < 3 || isempty(hostPort)
+    hostPort = 1972;          % TPC/IP port of host computer
+end
+if nargin < 2 || isempty(hostIP)
+    % Running the buffer from outside Matlab is highly recommended.
+    % The mex file is buggy and Matlab is unable to clear it when used to
+    % initialize the Fieldtrip real-time buffer.
+    hostIP  = 'localhost';  % IP address of host computer
+end
+if nargin < 1 || isempty(isRealtimeAlign)
+    isRealtimeAlign = 0;
+end
+if ischar(isRealtimeAlign)
+    if strcmp(isRealtimeAlign, 'RealtimeAlign')
+        isRealtimeAlign = 1;
+    else
+        error('Unrecognize option.');
+    end
+end
+    
 %% ===== CONFIGURATION ====
 % % User Directory
 % user_dir = bst_get('UserDir');
@@ -68,10 +75,9 @@ ConditionChan =             'SensorPositions'; % Used to update sensor locations
 ConditionRealtimeAlign =    'RealtimeAlign'; % Used for realtime alignment of previous head position
 % Brainstorm
 bst_dir =       bst_get('BrainstormHomeDir');
-% bst_db_dir =    bst_get('BrainstormDbDir');
 tmp_dir =       bst_get('BrainstormTmpDir');
 
-%InitFieldtripBuffer(hostIP, hostPort);
+InitFieldtripBuffer(hostIP, hostPort);
 
 
 %% ===== PREPARE DATABASE =====
