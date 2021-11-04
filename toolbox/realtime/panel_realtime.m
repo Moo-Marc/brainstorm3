@@ -137,8 +137,8 @@ function RTConfig = GetTemplate()
 
 % Intialize global variable
     RTConfig = struct(...
-        'FThost',           [], ...     % fieldtrip host address
-        'FTport',           [], ...     % fieldtrip port number
+        'FThost',           [], ...     % fieldtrip buffer host address
+        'FTport',           [], ...     % fieldtrip buffer port number
         'ChunkSamples',     [], ...     % number of samples in each data chunk from ACQ
         'nChunks',          0, ...      % number of chunks to collect for each processing block
         'BlockSamples',     0, ...      % minimum number of samples per processing block
@@ -304,30 +304,61 @@ function InitFieldtripBuffer_Callback(h, ev)
     ctrl = bst_get('PanelControls', 'Realtime');
     ft_host = char(ctrl.jTextFTHost.getText());
     ft_port = str2double(char(ctrl.jTextFTPort.getText()));
+    InitFieldtripBuffer(ft_host, ft_port);
+end
 
-    % Get the Fieldtrip directory
-    user_dir = bst_get('UserDir');
-
-    bst_dir = bst_get('BrainstormHomeDir');
-    d = dir(bst_fullfile(fileparts(bst_dir),'fieldtrip*'));
-    if isempty(d)
-        % ask the user for the fieldtrip directory
-        ft_dir = java_getfile( 'open', 'Select FieldTrip Directory...', user_dir, 'single', 'dirs', ...
-                {{'*'}, 'FieldTrip directory', 'directory'}, 0);
-        if isempty(ft_dir)
-            error('Cannot find the FieldTrip Directory');
-        end
-    else
-        ft_dir = bst_fullfile(fileparts(bst_dir),d(1).name);
+% Also called by bst_headtracking
+function InitFieldtripBuffer(ft_host, ft_port)
+    % Initialize FieldTrip
+    [isInstalled, errMsg, PlugFt] = bst_plugin('Install', 'fieldtrip');
+    if ~isInstalled
+        return;
     end
+    ft_dir = bst_fileparts(which(PlugFt.TestFile));
+    % Add fieldtrip buffer to path
     ft_rtbuffer = bst_fullfile(ft_dir, 'realtime', 'src', 'buffer', 'matlab');
     ft_io = bst_fullfile(ft_dir, 'fileio');
-
     if exist(ft_rtbuffer, 'dir') && exist(ft_io, 'dir')
         addpath(ft_rtbuffer);
         addpath(ft_io);
     else
-        bst_error('Cannot find the FieldTrip buffer and/or io directories');
+        error('Cannot find the FieldTrip buffer and/or io directories');
+    end
+    
+    %     % Some Fieldtrip versions may require multithreading dll. Depends on how the
+    %     % buffer mex file was compiled.
+    %     % TODO: can we test if this is needed first?  And check 32/64 bit.
+    %     ft_pthreadlib = bst_fullfile(ft_dir, 'realtime', 'src', 'external', 'pthreads-win64', 'lib');
+    %     if ispc && ~exist(bst_fullfile(ft_rtbuffer, 'pthreadGC2-w64.dll'), 'file') && ...
+    %             exist(bst_fullfile(ft_pthreadlib, 'pthreadGC2-w64.dll'), 'file')
+    %         file_copy(bst_fullfile(ft_pthreadlib, 'pthreadGC2-w64.dll'), ...
+    %             bst_fullfile(ft_rtbuffer, 'pthreadGC2-w64.dll'));
+    %     end
+    
+    % bst_headtracking used to find and kill any old matlab processes.
+    % Just check and warn instead.
+    %     pid = feature('getpid');
+    [tmp,tasks] = system('tasklist');
+    pat = '\s+';
+    str=tasks;
+    s = regexp(str, pat, 'split');
+    iMatlab = find(~cellfun(@isempty, strfind(s, 'MATLAB.exe')));
+    
+    if numel(iMatlab) > 1
+        disp('Multiple MATLAB processes running. You should verify and probably quit or kill other MATLAB instances.');
+        %         % kill the extra matlab(s)
+        %         disp('An old MATLAB process is still running, stopping now...');
+        %         temp = str2double(s(iMatlab+1));
+        %         iKill = find(temp ~= pid);
+        %         for ii=1:length(iKill)
+        %             [status,result] = system(['Taskkill /PID ' num2str(temp(iKill(ii))) ' /F']);
+        %             if status
+        %                 disp(result);
+        %                 disp('The process could not be stopped.  Please stop it manually');
+        %             else
+        %                 disp(result);
+        %             end
+        %         end
     end
     
     % ===== Initialize the buffer
@@ -335,40 +366,46 @@ function InitFieldtripBuffer_Callback(h, ev)
         disp('BST> Initializing FieldTrip buffer...');
         buffer('tcpserver', 'init', ft_host, ft_port);
     catch ME
-        disp('BST> Warning: FieldTrip buffer is already initialized.');
+        disp('BST> Warning: FieldTrip buffer is already initialized.  Resetting.');
+        buffer('flush_hdr', [], ft_host, ft_port);
         disp(ME);
     end
 
     % ===== Waiting for acquisition to start
-    bst_progress('start', 'Waiting for ACQ to start', ...
-        '<HTML>On ACQ: <BR> 1. Load "realtime" study <BR> 2. Click "realtime feedback" icon in toolbar <BR> 3. Start Acquisition');
+    bst_progress('start', 'Waiting for data acquisition to start', ...
+        '<HTML>On acquisition system: <BR> 1. Start CTF Acq and load study <BR> 2. Start buffer client <BR> 3. Start acquisition');
 
+    % TODO: This loop can make Matlab crash if wait is too long.
     % Wait for buffer to start filling. If filled before (this is not the first
     % time that we run this file in this session without closing matlab), this
     % step will be passed
     while (1)
         try
+            % [nsamples, nevents, timeout]
             numbers = buffer('wait_dat', [1 -1 1000], ft_host, ft_port);        
             break;
         catch ME
             pause(1);
+            disp(ME); % for debugging
         end
     end
-    % Check if data is comming right now or the buffer was full before.
-    hdr = buffer('get_hdr', [], ft_host, ft_port);
-    tmp = hdr.nsamples;
-    tmp2 = tmp;
-    while (1)
-        hdr = buffer('get_hdr', [], ft_host, ft_port);
-        if hdr.nsamples<tmp || hdr.nsamples>tmp2
-            disp('BST> Acquisition started.');
-            break
-         else
-            pause(1);
-        end
-         tmp2 = hdr.nsamples;
-    end 
     bst_progress('stop');
+    disp('BST> Acquisition started.');
+    
+    %     % Check if data is comming right now or the buffer was full before.
+    %     hdr = buffer('get_hdr', [], ft_host, ft_port);
+    %     tmp = hdr.nsamples;
+    %     tmp2 = tmp;
+    %     while (1)
+    %         hdr = buffer('get_hdr', [], ft_host, ft_port);
+    %         if hdr.nsamples<tmp || hdr.nsamples>tmp2
+    %             disp('BST> Acquisition started.');
+    %             break
+    %          else
+    %             pause(1);
+    %         end
+    %          tmp2 = hdr.nsamples;
+    %     end
 end
 
 %% Start Collection

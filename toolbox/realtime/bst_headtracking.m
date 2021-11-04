@@ -4,11 +4,11 @@ function bst_headtracking(varargin)
 %
 % USAGE:    bst_headtracking()              Defaults: isRealtimeAlign=0, hostIP='localhost' and TCPIP=1972
 %           bst_headtracking(isRealtimeAlign)
-%           bst_headtracking(isRealtimeAlign, hostIP, TCPIP)
+%           bst_headtracking(isRealtimeAlign, hostIP, hostPort)
 %
 % Inputs:   isRealtimeAlign = [0,1], 1 turns on realtime alignment with saved headposition
-%           hostIP  = IP address of host computer
-%           TCPIP   = TCP/IP port of host computer
+%           hostIP   = IP address of host computer (e.g. '10.0.0.1', or 'localhost')
+%           hostPort = TCP/IP port of host computer (e.g. 1972)
 %
 % @=============================================================================
 % This function is part of the Brainstorm software:
@@ -28,15 +28,15 @@ function bst_headtracking(varargin)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Elizabeth Bock & Francois Tadel, 2012-2013
+% Authors: Elizabeth Bock & Francois Tadel, 2012-2013, Marc Lalancette 2021
 
 global isSaveAlignChannelFile
 %% ===== DEFAULT INPUTS ====
 
 % defaults
 isRealtimeAlign = 0;
-hostIP  = 'localhost';    % IP address of host computer
-TCPIP   = 1972;             % TPC/IP port of host computer
+hostIP  = '10.0.0.2'; %'localhost';    % IP address of host computer
+hostPort = 1972;          % TPC/IP port of host computer
 PosFile = [];
 if nargin == 1
     if strcmp(varargin{1},'RealtimeAlign')
@@ -48,11 +48,11 @@ elseif nargin == 2
 elseif nargin == 3
     isRealtimeAlign = varargin{1};
     hostIP  = varargin{2};
-    TCPIP   = varargin{3};
+    hostPort   = varargin{3};
 elseif nargin == 4
     isRealtimeAlign = varargin{1};
     hostIP  = varargin{2};
-    TCPIP   = varargin{3};
+    hostPort   = varargin{3};
     PosFile = varargin{4};   
 end
 
@@ -71,28 +71,8 @@ bst_dir =       bst_get('BrainstormHomeDir');
 % bst_db_dir =    bst_get('BrainstormDbDir');
 tmp_dir =       bst_get('BrainstormTmpDir');
 
-% Initialize FieldTrip
-[isInstalled, errMsg, PlugFt] = bst_plugin('Install', 'fieldtrip');
-if ~isInstalled
-    return;
-end
-ft_dir = bst_fileparts(which(PlugFt.TestFile));
-% Add fieldtrip buffer to path
-ft_rtbuffer = bst_fullfile(ft_dir, 'realtime', 'src', 'buffer', 'matlab');
-ft_io = bst_fullfile(ft_dir, 'fileio');
-if exist(ft_rtbuffer, 'dir') && exist(ft_io, 'dir')
-    addpath(ft_rtbuffer);
-    addpath(ft_io);
-else
-    error('Cannot find the FieldTrip buffer and/or io directories');
-end
-% Newer Fieldtrip version requires multithreading dll.
-ft_pthreadlib = bst_fullfile(ft_dir, 'realtime', 'src', 'external', 'pthreads-win64', 'lib'); 
-if ispc && ~exist(bst_fullfile(ft_rtbuffer, 'pthreadGC2-w64.dll'), 'file') && ...
-        exist(bst_fullfile(ft_pthreadlib, 'pthreadGC2-w64.dll'), 'file') 
-    file_copy(bst_fullfile(ft_pthreadlib, 'pthreadGC2-w64.dll'), ...
-        bst_fullfile(ft_rtbuffer, 'pthreadGC2-w64.dll'));
-end
+%InitFieldtripBuffer(hostIP, hostPort);
+
 
 %% ===== PREPARE DATABASE =====
 % Get protocol
@@ -249,56 +229,9 @@ if isempty(sStudyChan)
     sStudyChan = bst_get('Study', iStudyChan);
 end
 
-%% ===== INITIALIZE FIELDTRIP BUFFER =====
-% find and kill any old matlab processes
-pid = feature('getpid');
-[tmp,tasks] = system('tasklist');
-pat = '\s+';
-str=tasks;
-s = regexp(str, pat, 'split'); 
-iMatlab = find(~cellfun(@isempty, strfind(s, 'MATLAB.exe')));
-
-if numel(iMatlab) > 1
-    % kill the extra matlab(s)
-    disp('An old MATLAB process is still running, stopping now...');
-    temp = str2double(s(iMatlab+1));
-    iKill = find(temp ~= pid);
-    for ii=1:length(iKill)
-        [status,result] = system(['Taskkill /PID ' num2str(temp(iKill(ii))) ' /F']);
-        if status
-            disp(result);
-            disp('The process could not be stopped.  Please stop it manually');
-        else
-            disp(result);
-        end
-    end
-end
-    
-% Initialize the buffer
-try
-    disp('BST> Initializing FieldTrip buffer...');
-    buffer('tcpserver', 'init', hostIP, TCPIP);
-catch
-    disp('BST> Warning: FieldTrip buffer is already initialized.');
-    buffer('flush_hdr', [], hostIP, TCPIP);
-end
-% disp('BST> Remember to type ''clear buffer'' once done with head tracking.'); % Doesn't work: freezes. 
-% Waiting for acquisition to start
-disp('BST> Waiting for acquisition to start...');
-while (1) % To fix: This loop can make Matlab crash if wait is too long.
-    try
-        % [nsamples, nevents, timeout]
-        numbers = buffer('wait_dat', [1 -1 1000], hostIP, TCPIP);        
-        disp('BST> Acquisition started.');
-        break;
-    catch
-        pause(1);
-    end
-end
-
 %% ===== READING RES4 INFO =====
 % Reading header
-hdr = buffer('get_hdr', [], hostIP, TCPIP);
+hdr = buffer('get_hdr', [], hostIP, hostPort);
 
 % Write .res4 file
 res4_file = bst_fullfile(tmp_dir, 'temp.res4');
@@ -362,14 +295,14 @@ while (1)
     % Number of samples to read
     nSamples = 300;
     % Read the last nSamples fiducial positions
-    hdr = buffer('get_hdr', [], hostIP, TCPIP);
+    hdr = buffer('get_hdr', [], hostIP, hostPort);
     currentSample = hdr.nsamples;
     if currentSample < nSamples-1
         % Wait
         pause(.2);
         continue;
     end
-    dat = buffer('get_dat', [currentSample-nSamples-1,currentSample-1], hostIP, TCPIP);
+    dat = buffer('get_dat', [currentSample-nSamples-1,currentSample-1], hostIP, hostPort);
     % Average in time
     buf = mean(double(dat.buf), 2);
     Fid = [buf(1:3), buf(4:6), buf(7:9)] ./ 1e3; % convert to mm
@@ -691,7 +624,6 @@ set(hHelmetPatch, 'Vertices',   vert, ...
                    'Tag',        'HelmetPatch');
                  
 end
-
 
 
 function Faces = channel_tesselate_local( Vertices, isPerimThresh )
