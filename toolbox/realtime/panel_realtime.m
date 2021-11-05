@@ -139,6 +139,7 @@ function RTConfig = GetTemplate()
     RTConfig = struct(...
         'FThost',           [], ...     % fieldtrip buffer host address
         'FTport',           [], ...     % fieldtrip buffer port number
+        'Timeout',          4000, ...   % timeout for requests to get data from buffer (ms)
         'ChunkSamples',     [], ...     % number of samples in each data chunk from ACQ
         'nChunks',          0, ...      % number of chunks to collect for each processing block
         'BlockSamples',     0, ...      % minimum number of samples per processing block
@@ -148,7 +149,7 @@ function RTConfig = GetTemplate()
         'iStim',            [], ...     % indices of stim channels
         'iMEG',             [], ...     % indices of MEG channels
         'iMEGREF',          [], ...     % indices of MEG ref channels
-        'iHeadLocChan',     [], ...     % indices of head localization channels
+        'iHeadLoc',     [], ...     % indices of head localization channels
         'nBlockSmooth',     0, ...      % smoothing (number of buffer chunks);
         'SmoothingFilter',  [], ...     % median filter smoothing for the display (# of blocks) 
         'RefLength',        0, ...      % reference period (seconds)
@@ -169,7 +170,6 @@ function RTConfig = GetTemplate()
         'LastMeasures',     [], ...     % previous source maps (length of smoothing filter)
         'hFig',             0, ...      % current figure
         'iDS',              []);        % index of currently loaded dataset
-    
     
 end
 
@@ -308,10 +308,11 @@ function InitFieldtripBuffer_Callback(h, ev)
 end
 
 % Also called by bst_headtracking
-function InitFieldtripBuffer(ft_host, ft_port)
+function hdr = InitFieldtripBuffer(ft_host, ft_port)
     % Initialize FieldTrip
     [isInstalled, errMsg, PlugFt] = bst_plugin('Install', 'fieldtrip');
     if ~isInstalled
+        error('FieldTrip plugin required (full version, not lite which Brainstorm would get by default). %s', errMsg);
         return;
     end
     ft_dir = bst_fileparts(which(PlugFt.TestFile));
@@ -322,7 +323,7 @@ function InitFieldtripBuffer(ft_host, ft_port)
         addpath(ft_rtbuffer);
         addpath(ft_io);
     else
-        error('Cannot find the FieldTrip buffer and/or io directories');
+        error('Cannot find the FieldTrip realtime and/or io directories. Full (not lite) version of FieldTrip required.');
     end
     
     %     % Some Fieldtrip versions may require multithreading dll. Depends on how the
@@ -335,77 +336,73 @@ function InitFieldtripBuffer(ft_host, ft_port)
     %             bst_fullfile(ft_rtbuffer, 'pthreadGC2-w64.dll'));
     %     end
     
-    % bst_headtracking used to find and kill any old matlab processes.
-    % Just check and warn instead.
+    % bst_headtracking used to find and kill "old" matlab processes.
     %     pid = feature('getpid');
-    [tmp,tasks] = system('tasklist');
-    pat = '\s+';
-    str=tasks;
-    s = regexp(str, pat, 'split');
-    iMatlab = find(~cellfun(@isempty, strfind(s, 'MATLAB.exe')));
-    
-    if numel(iMatlab) > 1
-        disp('Multiple MATLAB processes running. You should verify and probably quit or kill other MATLAB instances.');
-        %         % kill the extra matlab(s)
-        %         disp('An old MATLAB process is still running, stopping now...');
-        %         temp = str2double(s(iMatlab+1));
-        %         iKill = find(temp ~= pid);
-        %         for ii=1:length(iKill)
-        %             [status,result] = system(['Taskkill /PID ' num2str(temp(iKill(ii))) ' /F']);
-        %             if status
-        %                 disp(result);
-        %                 disp('The process could not be stopped.  Please stop it manually');
-        %             else
-        %                 disp(result);
-        %             end
-        %         end
-    end
-    
-    % ===== Initialize the buffer
-    try
-        disp('BST> Initializing FieldTrip buffer...');
-        buffer('tcpserver', 'init', ft_host, ft_port);
-    catch ME
-        disp('BST> Warning: FieldTrip buffer is already initialized.  Resetting.');
-        buffer('flush_hdr', [], ft_host, ft_port);
-        disp(ME);
-    end
-
-    % ===== Waiting for acquisition to start
-    bst_progress('start', 'Waiting for data acquisition to start', ...
-        '<HTML>On acquisition system: <BR> 1. Start CTF Acq and load study <BR> 2. Start buffer client <BR> 3. Start acquisition');
-
-    % TODO: This loop can make Matlab crash if wait is too long.
-    % Wait for buffer to start filling. If filled before (this is not the first
-    % time that we run this file in this session without closing matlab), this
-    % step will be passed
-    while (1)
+    %     [tmp,tasks] = system('tasklist');
+    %     pat = '\s+';
+    %     str=tasks;
+    %     s = regexp(str, pat, 'split');
+    %     iMatlab = find(~cellfun(@isempty, strfind(s, 'MATLAB.exe')));
+    %
+    %     if numel(iMatlab) > 1
+    %         disp('Multiple MATLAB processes running. You should verify and probably quit or kill other MATLAB instances.');
+    %         %         % kill the extra matlab(s)
+    %         %         disp('An old MATLAB process is still running, stopping now...');
+    %         %         temp = str2double(s(iMatlab+1));
+    %         %         iKill = find(temp ~= pid);
+    %         %         for ii=1:length(iKill)
+    %         %             [status,result] = system(['Taskkill /PID ' num2str(temp(iKill(ii))) ' /F']);
+    %         %             if status
+    %         %                 disp(result);
+    %         %                 disp('The process could not be stopped.  Please stop it manually');
+    %         %             else
+    %         %                 disp(result);
+    %         %             end
+    %         %         end
+    %     end
+    hdr = [];
+    if strcmpi(ft_host, 'localhost')
+        % ===== Initialize the buffer
         try
-            % [nsamples, nevents, timeout]
-            numbers = buffer('wait_dat', [1 -1 1000], ft_host, ft_port);        
-            break;
+            disp('BST> Initializing FieldTrip buffer...');
+            buffer('tcpserver', 'init', ft_host, ft_port);
         catch ME
-            pause(1);
-            disp(ME); % for debugging
+            disp('BST> Warning: FieldTrip buffer is already initialized.  Resetting.');
+            buffer('flush_hdr', [], ft_host, ft_port);
+            % To confirm if flush makes nsamples start from 0 again.
+            disp(ME);
+        end
+        
+        % ===== Waiting for acquisition to start
+        bst_progress('start', 'Waiting for data acquisition to start', ...
+            '<HTML>On acquisition system: <BR> 1. Start buffer program <BR> 2. Start CTF Acq and load study <BR> 3. Start acquisition');
+        
+        % TODO: This loop can make Matlab crash if wait is too long.
+        % Wait for buffer to start filling. If filled before (this is not the first
+        % time that we run this file in this session without closing matlab), this
+        % step will be passed
+        while (1)
+            try
+                % [nsamples, nevents, timeout]
+                hdr = buffer('wait_dat', [1, 0, 1000], ft_host, ft_port);
+                break;
+            catch ME
+                pause(1);
+                disp(ME); % for debugging
+            end
+        end
+        bst_progress('stop');
+        disp('BST> Acquisition started.');
+    else
+        % Try connecting to the buffer at the specified IP.
+        try
+            hdr = buffer('get_hdr', [], ft_host, ft_port);
+        catch ME
+            disp('Unable to get header from buffer at provided IP. \nBuffer should be initialized first. \nA firewall could block access and cause this error.');
+            rethrow(ME);
         end
     end
-    bst_progress('stop');
-    disp('BST> Acquisition started.');
     
-    %     % Check if data is comming right now or the buffer was full before.
-    %     hdr = buffer('get_hdr', [], ft_host, ft_port);
-    %     tmp = hdr.nsamples;
-    %     tmp2 = tmp;
-    %     while (1)
-    %         hdr = buffer('get_hdr', [], ft_host, ft_port);
-    %         if hdr.nsamples<tmp || hdr.nsamples>tmp2
-    %             disp('BST> Acquisition started.');
-    %             break
-    %          else
-    %             pause(1);
-    %         end
-    %          tmp2 = hdr.nsamples;
-    %     end
 end
 
 %% Start Collection
@@ -419,246 +416,9 @@ function StartRealtime_Callback(h,ev)
     end
 end
 
-%% Setup Realtime Channel File
-function [ChannelMat, ChannelGains] = SetupRealtimeChannelFile()
-    ctrl = bst_get('PanelControls', 'Realtime');
-    hdr = buffer('get_hdr', [], char(ctrl.jTextFTHost.getText()), str2double(char(ctrl.jTextFTPort.getText())));
-    
-    % Get temporary folder
-    tmp_dir = bst_get('BrainstormTmpDir');
-    % ===== Read *.res4 and create channel file
-    % Write .res4 file
-    res4_file = fullfile(tmp_dir, 'temp.res4');
-    fid = fopen(res4_file, 'w', 'l');
-    fwrite(fid, hdr.ctf_res4, 'uint8');
-    fclose(fid);
-    % Write empty .meg4
-    meg4_file = fullfile(tmp_dir, 'temp.meg4');
-    fid = fopen(meg4_file, 'w', 'l');
-    fclose(fid);
-    % Reading structured res4
-    [ChannelMat, header] = in_channel_ctf(res4_file);         
-    % Add channel file to condition RealtimeData
-    [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'RealtimeData'));
-    if isempty(iStudy)
-        bst_error('RealtimeData condition not found. You must first register the subject');
-    end
-    db_set_channel(iStudy, ChannelMat, 2, 0);
-    % Read the Gains
-    frHL = find(strcmpi({ChannelMat.Channel.Name},'HLC0011'));
-    gain_chan = double(header.gain_chan(1:frHL-1));
-    gain_chan(gain_chan == 0) = eps;
-    if (size(gain_chan, 1) == 1)
-        gain_chan = gain_chan';
-    end
-    ChannelGains = gain_chan;
-    
-    % Create a Small Data File
-    % If we don't have a Database in the study, we make a fake one.
-    if  isempty(sStudy.Data)
-        % Create structure
-        dataSt = db_template('datamat');
-        dataSt.F        = 1e-12 .* repmat(rand([hdr.nchans,1]), [1 2]);        % Should be filled when we read the data
-        dataSt.Comment  = 'RealTimeData'; % Name of data file
-        dataSt.ChannelFlag = ones(hdr.nchans,1);
-        dataSt.Time     = [0, 1/hdr.fsample];    
-        dataSt.DataType = 'recordings';
-        dataSt.Device   = 'CTF';
-        % Register in database
-        db_add(iStudy, dataSt);
-    end
-    
-    % Reload condition
-    db_reload_studies(iStudy);
-end
-
-%% Head Localization
-function HeadPositionRaw = HeadLocalization()
-    
-    % Get panel controls
-    ctrl = bst_get('PanelControls', 'Realtime');
-    ft_host = char(ctrl.jTextFTHost.getText());
-    ft_port = str2double(char(ctrl.jTextFTPort.getText()));
-    
-    % Reading channel coordinates in DEWAR coordinates 
-    % (.res4 read from the FieldTrip buffer)
-    [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'RealtimeData'));
-    ChannelMat = in_bst_channel(file_fullpath(sStudy.Channel.FileName));
-    
-    % Read the HLC data from buffer
-    hdr = buffer('get_hdr', [], ft_host, ft_port);
-    dat = GetNextDataBuffer();    
-    % Head localization channels
-    first_HL = 'HLC0011';          % First Head Localization index 
-    frHL = find(strcmpi(hdr.channel_names,first_HL));
-    iHeadLocChan = frHL:frHL+8;
-    if isempty(frHL)
-        bst_error('HLC channels not found.  Load a paradigm with continuous head tracking');
-    end
-    % Extract fiducial points and add them to ChannelMat
-    hlc = mean(double(dat(iHeadLocChan,:)), 2)/1e6;  % positions should be in "m". um => m
-    ChannelMat.SCS.NAS = hlc(1:3)'; % in m
-    ChannelMat.SCS.LPA = hlc(4:6)'; % in m
-    ChannelMat.SCS.RPA = hlc(7:9)'; % in m
-    HeadPositionRaw(1) = sqrt(sum(hlc(1:3).^2));
-    HeadPositionRaw(2) = sqrt(sum(hlc(4:6).^2));
-    HeadPositionRaw(3) = sqrt(sum(hlc(7:9).^2));
-
-    % Compute transformation (DEWAR => CTF COIL)
-    transfSCS = cs_compute(ChannelMat, 'scs'); % NAS, LPA and RPA in m
-    ChannelMat.SCS.R = transfSCS.R;
-    ChannelMat.SCS.T = transfSCS.T; % in m
-    ChannelMat.SCS.Origin = transfSCS.Origin;
-
-    % TRANFORMATION: CTF COIL => ANATOMICAL NAS/LPA/RPA
-    % Get the transformation for HPI head coordinates (POS file) to Brainstorm
-    HeadPointsStudy = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'HeadPoints'));
-    HPChannelFile = file_fullpath(HeadPointsStudy.Channel.FileName);
-    HPChannelMat = in_bst_channel(HPChannelFile);
-    % find existing headpoints and transformation
-    iTrans = find(~cellfun(@isempty,strfind(HPChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')));
-    if isempty(iTrans)
-        bst_error('No SCS transformation in the channel file')
-        return;
-    end
-    % Get the translation and rotation from the HeadPoints tranformation
-    trans = HPChannelMat.TransfMeg{iTrans};
-    anatR = trans(1:3, 1:3);
-    anatT = trans(1:3, 4); % in m
-
-    % add the tranformation
-    transfAnat = [anatR, anatT; 0 0 0 1]*[transfSCS.R, transfSCS.T; 0 0 0 1]; % in m
-
-    % Update the ChannelMat structure
-    ChannelMat.SCS.R = transfAnat(1:3, 1:3);
-    ChannelMat.SCS.T = transfAnat(1:3, 4); % in m
-    % 
-    % Process each sensor
-    for i = 1:length(ChannelMat.Channel)
-        if ~isempty(ChannelMat.Channel(i).Loc)
-            % Converts the electrodes locations
-            % ChannelMat.SCS is currently in m
-            %ChannelMat.Channel(i).Loc = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.Channel(i).Loc' ./ 1000)' .* 1000;
-            ChannelMat.Channel(i).Loc = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.Channel(i).Loc, ChannelMat.SCS.T);
-        end
-    end
-
-    % Convert the fiducials positions
-%     ChannelMat.SCS.NAS = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.SCS.NAS ./ 1000) .* 1000;  %points stored in meters
-%     ChannelMat.SCS.LPA = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.SCS.LPA ./ 1000) .* 1000;
-%     ChannelMat.SCS.RPA = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.SCS.RPA ./ 1000) .* 1000;
-    ChannelMat.SCS.NAS = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.SCS.NAS', ChannelMat.SCS.T)';  %points stored in meters
-    ChannelMat.SCS.LPA = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.SCS.LPA', ChannelMat.SCS.T)';
-    ChannelMat.SCS.RPA = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.SCS.RPA', ChannelMat.SCS.T)';
-    
-    % Update the list of transformation
-    if isempty(ChannelMat.TransfMegLabels)
-        iTrans = [];
-    else
-        iTrans = find(~cellfun(@isempty,strfind(ChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')));
-    end
-
-    if isempty(iTrans)
-        ChannelMat.TransfMeg{end+1} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
-        ChannelMat.TransfMegLabels{end+1} = 'Native=>Brainstorm/CTF';
-        ChannelMat.TransfEeg{end+1} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
-        ChannelMat.TransfEegLabels{end+1} = 'Native=>Brainstorm/CTF';
-    else
-        ChannelMat.TransfMeg{iTrans} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
-        ChannelMat.TransfMegLabels{iTrans} = 'Native=>Brainstorm/CTF';
-        ChannelMat.TransfEeg{iTrans} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
-        ChannelMat.TransfEegLabels{iTrans} = 'Native=>Brainstorm/CTF';
-    end
-
-    % Save new channel file to the target studies
-    ChannelFile = file_fullpath(sStudy.Channel.FileName);
-    save(ChannelFile, '-struct', 'ChannelMat')
-    % Reload this condition
-    db_reload_studies(iStudy);
-
-    % Quality control for subject position
-    sSubject = bst_get('Subject');
-    hFig = view_surface(sSubject.Surface(sSubject.iScalp).FileName);
-    % Set view from the left
-    figure_3d('SetStandardView', hFig, 'left');
-    figure_3d('ViewAxis', hFig, 1);
-    view_helmet(ChannelFile, hFig);
-    pause(5);
-    close(hFig);
-end
-
-%% Compute Imaging Kernel
-function ResultsFile = ComputeImagingKernel()
-    ctrl = bst_get('PanelControls', 'Realtime');
-
-    % ===== Noise Covariance
-    [sStudy, iRealTimestudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'RealtimeData'));
-    if isempty(sStudy.NoiseCov) % if the study does not have a noise cov, get one
-        [NoiseCovStudy, iNoiseCovStudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'Noise'));
-
-        if isempty(NoiseCovStudy) % if there is no emptyroom study, use the default
-            bst_error('There is no Noise study available for the noise covariance.  You must first register your subject');
-        end
-
-        % find the noise cov in this study
-        NoiseCovFile = NoiseCovStudy.NoiseCov;
-        if isempty(NoiseCovFile)
-            iDatas = bst_get('DataForDataList',iNoiseCovStudy, 'Raw');
-            NoiseCovMat = load(bst_noisecov(iNoiseCovStudy, [], iDatas));
-            import_noisecov(iNoiseCovStudy, NoiseCovMat, 1);
-        end
-
-        % copy the Noise cov from the noise study to the realtime study
-        db_set_noisecov(iNoiseCovStudy, iRealTimestudy);
-    end
-
-    % ===== Computation of Head Model: OVERLAPPING SPHERES
-    [sStudy, ~] = bst_get('Study', iRealTimestudy);
-    InputFiles = {sStudy.Data(1).FileName};
-    % Process: Compute head model
-    bst_process('CallProcess', 'process_headmodel', ...
-        InputFiles, [], ...
-        'comment', '', ...
-        'sourcespace', 1, ...
-        'meg', 3, ...  % Overlapping spheres
-        'eeg', 1, ...  % 
-        'ecog', 1, ...  % 
-        'seeg', 1, ...
-        'openmeeg', struct(...
-             'BemFiles', {{}}, ...
-             'BemNames', {{'Scalp', 'Skull', 'Brain'}}, ...
-             'BemCond', [1, 0.0125, 1], ...
-             'BemSelect', [1, 1, 1], ...
-             'isAdjoint', 0, ...
-             'isAdaptative', 1, ...
-             'isSplit', 0, ...
-             'SplitLength', 4000));
-
-    % ===== Source Estimation 
-    % Process: Compute sources
-    sFile = bst_process('CallProcess', 'process_inverse', InputFiles, [], ...
-    'comment', '', ...
-    'method', 1, ...  % Minimum norm estimates (wMNE)
-    'wmne', struct(...
-         'SourceOrient', {{'fixed'}}, ...
-         'loose', 0.2, ...
-         'SNR', 3, ...
-         'pca', 1, ...
-         'diagnoise', 0, ...
-         'regnoise', 1, ...
-         'magreg', 0.1, ...
-         'gradreg', 0.1, ...
-         'eegreg', 0.1, ...
-         'depth', 1, ...
-         'weightexp', 0.5, ...
-         'weightlimit', 10), ...
-    'sensortypes', 'MEG', ...
-    'output', 1);  % Kernel only: shared
-
-    ResultsFile = sFile(1).FileName;
-end
-
 %% Initialize the measurement parameters
+% This is called from realtime_demo or other external function, which must first
+% set up RTConfig.
 function InitializeRealtimeMeasurement(ReComputeHeadModel)
 
     global RTConfig
@@ -667,37 +427,38 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     ctrl = bst_get('PanelControls', 'Realtime');
     RTConfig.FThost = char(ctrl.jTextFTHost.getText());
     RTConfig.FTport = str2double(char(ctrl.jTextFTPort.getText()));
+    Subject = char(ctrl.jTextCurSubject.getText());
     
-    % TODO include the path to these files in bst
-    rtlib_dir = fileparts(which(mfilename));
-    addpath(fullfile(rtlib_dir, 'dllFiles'));
+    %     % TODO include the path to these files in bst
+    %     rtlib_dir = fileparts(which(mfilename));
+    %     addpath(fullfile(rtlib_dir, 'dllFiles'));
 
     bst_progress('start', 'Initialize realtime collection', 'Checking channel information');
 
     % ===== Channel info
-    [RealtimeChannelMat, RTConfig.ChannelGains] = SetupRealtimeChannelFile();
+    [RealtimeChannelMat, RTConfig.ChannelGains] = SetupRealtimeChannelFile(Subject, RTConfig.FThost, RTConfig.FTport);
     % noise compensation
     RTConfig.MegRefCoef = RealtimeChannelMat.MegRefCoef;
     % channel indices
+    % TODO: this should be selected by type, multiple stim channel possibilities.
     RTConfig.iStim = find(strcmpi({RealtimeChannelMat.Channel.Name},'UPPT001'));     % find the stimulation channel from parallel port
     RTConfig.iMEG = good_channel(RealtimeChannelMat.Channel,[],'MEG');
     RTConfig.iMEGREF = good_channel(RealtimeChannelMat.Channel,[],'MEG REF');
     % Head localization channels
-    frHL = find(strcmpi({RealtimeChannelMat.Channel.Name},'HLC0011'));
-    RTConfig.iHeadLocChan = frHL:frHL+8;
-    
+    iHeadLoc = find(strcmp({RealtimeChannelMat.Channel.Type}, 'HLU'));
+    [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLoc).Name});
+    RTConfig.iHeadLoc = iHeadLoc(iSortHlu); % Probably not needed.
+    % We don't apply gains to head loc channels (and following).
+    RTConfig.ChannelGains(iHeadLoc(1):end) = [];
     
     bst_progress('text', 'Checking data information');
     
-    % ===== Define the Buffer blocksize
+    % ===== Define the buffer acquisition blocksize
+
     hdr = buffer('get_hdr', [], RTConfig.FThost, RTConfig.FTport);
-    nsamples = hdr.nsamples;
-    while hdr.nsamples == nsamples
-        hdr = buffer('get_hdr', [], RTConfig.FThost, RTConfig.FTport);
-    end
-    RTConfig.prevSample = hdr.nsamples;
-    RTConfig.ChunkSamples = hdr.nsamples - nsamples;
     RTConfig.SampRate = hdr.fsample;
+    RTConfig.prevSample = hdr.nsamples;
+    RTConfig.ChunkSamples = 
     
     blocktime = str2double(char(ctrl.jTextBlock.getText()))/1000; %ms -> sec
     chnktime = RTConfig.ChunkSamples/RTConfig.SampRate;
@@ -792,59 +553,365 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     bst_progress('stop');
 end
 
-%% Get Next Data Buffer
-function dat = GetNextDataBuffer()
-
-    global RTConfig
-    % Get data from the buffer
-    waitBuffer = 1;
-    startTime = clock;
-    elapsedTime = 0;
-    dat = [];
-    prevSample = RTConfig.prevSample;
-
-    while waitBuffer && elapsedTime < 4
-      % determine number of samples available in buffer
-      hdr = buffer('get_hdr', [], RTConfig.FThost,RTConfig.FTport);
-
-      % see whether new samples are available
-      newsamples = (hdr.nsamples-prevSample);
-
-      if newsamples>=RTConfig.BlockSamples
-
-        % determine the samples to process
-        begsample  = prevSample+1;
-        endsample = prevSample + RTConfig.BlockSamples;
-
-        % remember up to where the data was read
-        RTConfig.prevSample  = endsample;
-
-        % read data segment from buffer
-        dat = buffer('get_dat',[begsample-1 endsample-1],RTConfig.FThost,RTConfig.FTport);
-        dat = dat.buf;
-        % Exit with the new buffer
-        waitBuffer = 0;    
-      end 
-      elapsedTime = etime(clock, startTime);
+%% Setup Realtime Channel File
+function [ChannelMat, ChannelGains] = SetupRealtimeChannelFile(Subject, ft_host, ft_port)
+    
+    [ChannelMat, ChannelGains] = ReadBufferRes4(ft_host, ft_port); 
+    
+    % Add channel file to condition RealtimeData
+    [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(Subject, 'RealtimeData'));
+    if isempty(iStudy)
+        bst_error('RealtimeData condition not found. You must first register the subject');
+    end
+    db_set_channel(iStudy, ChannelMat, 2, 0);
+    
+    % Create a Small Data File
+    % If we don't have a data file in the study, we make a fake one.
+    if  isempty(sStudy.Data)
+        % Create structure
+        dataSt = db_template('datamat');
+        dataSt.F        = 1e-12 .* repmat(rand([hdr.nchans,1]), [1 2]);        % Should be filled when we read the data
+        dataSt.Comment  = 'RealTimeData'; % Name of data file
+        dataSt.ChannelFlag = ones(hdr.nchans,1);
+        dataSt.Time     = [0, 1/hdr.fsample];    
+        dataSt.DataType = 'recordings';
+        dataSt.Device   = 'CTF';
+        % Register in database
+        db_add(iStudy, dataSt);
     end
     
-    if isempty(dat)
-        return; 
-    end
-    dat = double(dat);
-    % DATA PREPROCESSING
-    % Apply gains
-    dat(1:length(RTConfig.ChannelGains),:) = bst_bsxfun(@rdivide, dat(1:length(RTConfig.ChannelGains),:), RTConfig.ChannelGains);
-    % Apply 3rd order gradient
-    Cmegdat = dat(RTConfig.iMEG,:) - RTConfig.MegRefCoef*dat(RTConfig.iMEGREF,:);  % Clean MEG data
-    % Remove baseline
-    Cmegdat = Cmegdat - repmat(mean(Cmegdat,2),1,RTConfig.BlockSamples);
-    % Apply EOG and ECG SSP projectors 
-    if ~isempty(RTConfig.Projector)
-        Cmegdat = RTConfig.Projector * Cmegdat;
-    end
-    dat(RTConfig.iMEG,:) = Cmegdat;
+    % Reload condition
+    db_reload_studies(iStudy);
 end
+
+%% Read buffer header res4 
+function [ChannelMat, ChannelGains] = ReadBufferRes4(ft_host, ft_port)
+    % Read *.res4 and create channel file
+    
+    hdr = buffer('get_hdr', [], ft_host, ft_port);
+    
+    % Get temporary folder
+    tmp_dir = bst_get('BrainstormTmpDir');
+    % Write .res4 file
+    res4_file = fullfile(tmp_dir, 'temp.res4');
+    fid = fopen(res4_file, 'w', 'l');
+    fwrite(fid, hdr.ctf_res4, 'uint8');
+    fclose(fid);
+    % Write empty .meg4
+    meg4_file = fullfile(tmp_dir, 'temp.meg4');
+    fid = fopen(meg4_file, 'w', 'l');
+    fclose(fid);
+    % Reading structured res4
+    if nargout < 2
+        ChannelMat = in_channel_ctf(res4_file);
+    else
+        [ChannelMat, header] = in_channel_ctf(res4_file);
+        gain_chan = double(header.gain_chan);
+        gain_chan(gain_chan == 0) = 1; % avoid div by 0
+        if (size(gain_chan, 1) == 1)
+            gain_chan = gain_chan';
+        end
+        ChannelGains = gain_chan;
+    end
+end
+
+%% Head localization
+function HeadPositionRaw = HeadLocalization()
+    
+    global RTConfig
+    % Get panel controls
+    ctrl = bst_get('PanelControls', 'Realtime');
+    
+    % Reading channel coordinates in DEWAR coordinates 
+    % (.res4 read from the FieldTrip buffer)
+    [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'RealtimeData'));
+    ChannelMat = in_bst_channel(file_fullpath(sStudy.Channel.FileName));
+    
+    % Read the last HLC data available from the buffer.
+    DataMat = GetBufferData(false, RTConfig.iHeadLoc);    
+    % Extract fiducial points and add them to ChannelMat
+    hlc = mean(DataMat, 2)/1e6;  % positions should be in "m". um => m
+    ChannelMat.SCS.NAS = hlc(1:3)'; % in m
+    ChannelMat.SCS.LPA = hlc(4:6)'; % in m
+    ChannelMat.SCS.RPA = hlc(7:9)'; % in m
+    HeadPositionRaw(1) = sqrt(sum(hlc(1:3).^2));
+    HeadPositionRaw(2) = sqrt(sum(hlc(4:6).^2));
+    HeadPositionRaw(3) = sqrt(sum(hlc(7:9).^2));
+
+    % Compute transformation (DEWAR => CTF COIL)
+    transfSCS = cs_compute(ChannelMat, 'scs'); % NAS, LPA and RPA in m
+    ChannelMat.SCS.R = transfSCS.R;
+    ChannelMat.SCS.T = transfSCS.T; % in m
+    ChannelMat.SCS.Origin = transfSCS.Origin;
+
+    % TRANFORMATION: CTF COIL => ANATOMICAL NAS/LPA/RPA
+    % Get the transformation for HPI head coordinates (POS file) to Brainstorm
+    HeadPointsStudy = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'HeadPoints'));
+    HPChannelFile = file_fullpath(HeadPointsStudy.Channel.FileName);
+    HPChannelMat = in_bst_channel(HPChannelFile);
+    % find existing headpoints and transformation
+    iTrans = find(~cellfun(@isempty,strfind(HPChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')));
+    if isempty(iTrans)
+        bst_error('No SCS transformation in the channel file')
+        return;
+    end
+    % Get the translation and rotation from the HeadPoints tranformation
+    trans = HPChannelMat.TransfMeg{iTrans};
+    anatR = trans(1:3, 1:3);
+    anatT = trans(1:3, 4); % in m
+
+    % add the tranformation
+    transfAnat = [anatR, anatT; 0 0 0 1]*[transfSCS.R, transfSCS.T; 0 0 0 1]; % in m
+
+    % Update the ChannelMat structure
+    ChannelMat.SCS.R = transfAnat(1:3, 1:3);
+    ChannelMat.SCS.T = transfAnat(1:3, 4); % in m
+    % 
+    % Process each sensor
+    for i = 1:length(ChannelMat.Channel)
+        if ~isempty(ChannelMat.Channel(i).Loc)
+            % Converts the electrodes locations
+            % ChannelMat.SCS is currently in m
+            %ChannelMat.Channel(i).Loc = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.Channel(i).Loc' ./ 1000)' .* 1000;
+            ChannelMat.Channel(i).Loc = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.Channel(i).Loc, ChannelMat.SCS.T);
+        end
+    end
+
+    % Convert the fiducials positions
+%     ChannelMat.SCS.NAS = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.SCS.NAS ./ 1000) .* 1000;  %points stored in meters
+%     ChannelMat.SCS.LPA = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.SCS.LPA ./ 1000) .* 1000;
+%     ChannelMat.SCS.RPA = cs_convert(ChannelMat, 'mri', 'scs', ChannelMat.SCS.RPA ./ 1000) .* 1000;
+    ChannelMat.SCS.NAS = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.SCS.NAS', ChannelMat.SCS.T)';  %points stored in meters
+    ChannelMat.SCS.LPA = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.SCS.LPA', ChannelMat.SCS.T)';
+    ChannelMat.SCS.RPA = bst_bsxfun(@plus, ChannelMat.SCS.R * ChannelMat.SCS.RPA', ChannelMat.SCS.T)';
+    
+    % Update the list of transformation
+    if isempty(ChannelMat.TransfMegLabels)
+        iTrans = [];
+    else
+        iTrans = find(~cellfun(@isempty,strfind(ChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')));
+    end
+
+    if isempty(iTrans)
+        ChannelMat.TransfMeg{end+1} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
+        ChannelMat.TransfMegLabels{end+1} = 'Native=>Brainstorm/CTF';
+        ChannelMat.TransfEeg{end+1} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
+        ChannelMat.TransfEegLabels{end+1} = 'Native=>Brainstorm/CTF';
+    else
+        ChannelMat.TransfMeg{iTrans} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
+        ChannelMat.TransfMegLabels{iTrans} = 'Native=>Brainstorm/CTF';
+        ChannelMat.TransfEeg{iTrans} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
+        ChannelMat.TransfEegLabels{iTrans} = 'Native=>Brainstorm/CTF';
+    end
+
+    % Save new channel file to the target studies
+    ChannelFile = file_fullpath(sStudy.Channel.FileName);
+    save(ChannelFile, '-struct', 'ChannelMat')
+    % Reload this condition
+    db_reload_studies(iStudy);
+
+    % Quality control for subject position
+    sSubject = bst_get('Subject');
+    hFig = view_surface(sSubject.Surface(sSubject.iScalp).FileName);
+    % Set view from the left
+    figure_3d('SetStandardView', hFig, 'left');
+    figure_3d('ViewAxis', hFig, 1);
+    view_helmet(ChannelFile, hFig);
+    pause(5);
+    close(hFig);
+end
+
+%% Compute imaging kernel
+function ResultsFile = ComputeImagingKernel()
+    ctrl = bst_get('PanelControls', 'Realtime');
+
+    % ===== Noise Covariance
+    [sStudy, iRealTimestudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'RealtimeData'));
+    if isempty(sStudy.NoiseCov) % if the study does not have a noise cov, get one
+        [NoiseCovStudy, iNoiseCovStudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'Noise'));
+
+        if isempty(NoiseCovStudy) % if there is no emptyroom study, use the default
+            bst_error('There is no Noise study available for the noise covariance.  You must first register your subject');
+        end
+
+        % find the noise cov in this study
+        NoiseCovFile = NoiseCovStudy.NoiseCov;
+        if isempty(NoiseCovFile)
+            iDatas = bst_get('DataForDataList',iNoiseCovStudy, 'Raw');
+            NoiseCovMat = load(bst_noisecov(iNoiseCovStudy, [], iDatas));
+            import_noisecov(iNoiseCovStudy, NoiseCovMat, 1);
+        end
+
+        % copy the Noise cov from the noise study to the realtime study
+        db_set_noisecov(iNoiseCovStudy, iRealTimestudy);
+    end
+
+    % ===== Computation of Head Model: OVERLAPPING SPHERES
+    [sStudy, ~] = bst_get('Study', iRealTimestudy);
+    InputFiles = {sStudy.Data(1).FileName};
+    % Process: Compute head model
+    bst_process('CallProcess', 'process_headmodel', ...
+        InputFiles, [], ...
+        'comment', '', ...
+        'sourcespace', 1, ...
+        'meg', 3, ...  % Overlapping spheres
+        'eeg', 1, ...  % 
+        'ecog', 1, ...  % 
+        'seeg', 1, ...
+        'openmeeg', struct(...
+             'BemFiles', {{}}, ...
+             'BemNames', {{'Scalp', 'Skull', 'Brain'}}, ...
+             'BemCond', [1, 0.0125, 1], ...
+             'BemSelect', [1, 1, 1], ...
+             'isAdjoint', 0, ...
+             'isAdaptative', 1, ...
+             'isSplit', 0, ...
+             'SplitLength', 4000));
+
+    % ===== Source Estimation 
+    % Process: Compute sources
+    sFile = bst_process('CallProcess', 'process_inverse', InputFiles, [], ...
+    'comment', '', ...
+    'method', 1, ...  % Minimum norm estimates (wMNE)
+    'wmne', struct(...
+         'SourceOrient', {{'fixed'}}, ...
+         'loose', 0.2, ...
+         'SNR', 3, ...
+         'pca', 1, ...
+         'diagnoise', 0, ...
+         'regnoise', 1, ...
+         'magreg', 0.1, ...
+         'gradreg', 0.1, ...
+         'eegreg', 0.1, ...
+         'depth', 1, ...
+         'weightexp', 0.5, ...
+         'weightlimit', 10), ...
+    'sensortypes', 'MEG', ...
+    'output', 1);  % Kernel only: shared
+
+    ResultsFile = sFile(1).FileName;
+end
+
+%% Get block size sent by acquisition system into buffer
+function AcqBlockSamples = FindAcquisitionBlockSize()
+    global RTConfig
+    hdr = buffer('wait_dat', [1, 0, RTConfig.Timeout], RTConfig.FThost, RTConfig.FTport);
+    prevSample = hdr.nsamples;
+    % wait for at least one more sample 
+    hdr = buffer('wait_dat', [hdr.nsamples, 0, RTConfig.Timeout], RTConfig.FThost, RTConfig.FTport); % nsamples-1+1
+    AcqBlockSamples = hdr.nsamples - prevSample;
+end
+
+%% Get data from buffer
+function DataMat = GetBufferData(isNextBlock, iChan)
+    % isNextBlock = true means get the next block not yet read, not skipping any
+    % data and waiting if necessary (default).  false means just get the last
+    % block received in the buffer, so it can overlap with the previously read
+    % block or there might have been other data since the previously read block
+    % that is being skipped.
+    
+    if nargin < 2
+        iChan = [];
+    end
+    if nargin < 1
+        isNextBlock = true;
+    end
+    global RTConfig
+
+    % Check that RTConfig was previously initialized.
+    if isempty(RTConfig) || ~isfield(RTConfig, 'BlockSamples')
+        error('RTConfig not initialized before asking for data block.');
+    end
+    
+    % Get data from the buffer
+    if isNextBlock
+        if isempty(RTConfig.prevSample) || RTConfig.prevSample <= 0
+            error('RTConfig.prevSample not set before asking for next data block.');
+        end
+        hdr = buffer('wait_dat', [RTConfig.prevSample + RTConfig.BlockSamples, 0, RTConfig.Timeout], RTConfig.FThost, RTConfig.FTport);
+        % see whether new samples are available
+        if (hdr.nsamples - RTConfig.prevSample) >= RTConfig.BlockSamples
+            % read data segment from buffer
+            dat = buffer('get_dat', RTConfig.prevSample - 1 + [1, RTConfig.BlockSamples], RTConfig.FThost, RTConfig.FTport);
+            % remember up to where the data was read
+            RTConfig.prevSample = RTConfig.prevSample + RTConfig.BlockSamples;
+        else
+            dat = [];
+        end
+    else
+        % determine number of samples available in buffer. Wait until at least 1 block available.
+        hdr = buffer('wait_dat', [RTConfig.BlockSamples, 0, RTConfig.Timeout], RTConfig.FThost, RTConfig.FTport);
+        if hdr.nsamples >= RTConfig.BlockSamples
+            % read data segment from buffer
+            dat = buffer('get_dat', hdr.nsamples - [RTConfig.BlockSamples, 1], RTConfig.FThost, RTConfig.FTport);
+            % remember up to where the data was read
+            RTConfig.prevSample = hdr.nsamples;
+        else
+            dat = [];
+        end
+    end
+    if isempty(dat)
+        warning('Timeout waiting for next data block.');
+        DataMat = [];
+    elseif ~isempty(iChan)
+        % TODO: apply gains and 3rd gradient to MEG channels.
+        DataMat = double(dat.buf(iChan,:));
+    else
+        DataMat = double(dat.buf);
+    end
+end
+% function dat = GetNextDataBuffer()
+% 
+%     global RTConfig
+%     % Get data from the buffer
+%     waitBuffer = 1;
+%     startTime = clock;
+%     elapsedTime = 0;
+%     dat = [];
+%     prevSample = RTConfig.prevSample;
+% 
+%     while waitBuffer && elapsedTime < 4
+%       % determine number of samples available in buffer
+%       hdr = buffer('get_hdr', [], RTConfig.FThost,RTConfig.FTport);
+% 
+%       % see whether new samples are available
+%       newsamples = (hdr.nsamples-prevSample);
+% 
+%       if newsamples>=RTConfig.BlockSamples
+% 
+%         % determine the samples to process
+%         begsample  = prevSample+1;
+%         endsample = prevSample + RTConfig.BlockSamples;
+% 
+%         % remember up to where the data was read
+%         RTConfig.prevSample  = endsample;
+% 
+%         % read data segment from buffer
+%         dat = buffer('get_dat',[begsample-1 endsample-1],RTConfig.FThost,RTConfig.FTport);
+%         dat = dat.buf;
+%         % Exit with the new buffer
+%         waitBuffer = 0;    
+%       end 
+%       elapsedTime = etime(clock, startTime);
+%     end
+%     
+%     if isempty(dat)
+%         return; 
+%     end
+%     dat = double(dat);
+%     % DATA PREPROCESSING
+%     % Apply gains
+%     dat(1:length(RTConfig.ChannelGains),:) = bst_bsxfun(@rdivide, dat(1:length(RTConfig.ChannelGains),:), RTConfig.ChannelGains);
+%     % Apply 3rd order gradient
+%     Cmegdat = dat(RTConfig.iMEG,:) - RTConfig.MegRefCoef*dat(RTConfig.iMEGREF,:);  % Clean MEG data
+%     % Remove baseline
+%     Cmegdat = Cmegdat - repmat(mean(Cmegdat,2),1,RTConfig.BlockSamples);
+%     % Apply EOG and ECG SSP projectors 
+%     if ~isempty(RTConfig.Projector)
+%         Cmegdat = RTConfig.Projector * Cmegdat;
+%     end
+%     dat(RTConfig.iMEG,:) = Cmegdat;
+% end
 
 %% HEAD TRACKING AND DELAY ESTIMATION
 function CheckHeadMovement()

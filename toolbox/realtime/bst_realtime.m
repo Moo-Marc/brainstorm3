@@ -21,7 +21,7 @@
 
 bstPanel = panel_realtime('CreatePanel');
 
-OPTIONS.FTHost = '10.0.0.1';
+OPTIONS.FTHost = '10.0.0.2';
 OPTIONS.FTPort = 1972;
 OPTIONS.BlockTime = 400; %ms
 OPTIONS.HeadMoveThresh = 5; %mm

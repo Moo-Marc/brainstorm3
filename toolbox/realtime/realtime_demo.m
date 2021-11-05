@@ -25,8 +25,8 @@ function realtime_demo()
 %% Configure
 global RTConfig
 RTConfig = panel_realtime('GetTemplate');
-isSendMarkers = 0;          % Send markers to ACQQ
-PPTaddress = '2000';        % parallel port address
+isSendMarkers = 0;          % Send markers to ACQ
+PPTaddress = '3000';        % parallel port address (hexadecimal)
 RTConfig.nBlockSmooth = 5;  % smoothing (number of buffer chunks)
 RTConfig.RefLength = 30;    % length of reference period (seconds)
 % RTConfig.fdbkTrialTime = [];% time of each feedback trial
