@@ -89,7 +89,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     RTConfig.prevSample
     RTConfig.Timeout = 1000;
     RTConfig.BlockSamples = 300;
-    RTConfig.ChunkSamples = FindAcquisitionBlockSize();
+    RTConfig.ChunkSamples = panel_realtime('FindAcquisitionBlockSize');
     RTConfig.BlockSamples = ceil(RTConfig.BlockSamples/RTConfig.ChunkSamples) * RTConfig.ChunkSamples;
     
     
@@ -191,6 +191,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
         
         % Copy head points
         ChannelMat.HeadPoints = HeadMat.HeadPoints;
+        % TODO: Do we want to switch from coils to digitized anat coords here?
         % Force re-alignment on the new set of NAS/LPA/RPA (switch from CTF coil-based to SCS anatomical-based coordinate system)
         ChannelMat = channel_detect_type(ChannelMat, 1, 0);
         save(HPChannelFile, '-struct', 'ChannelMat');
@@ -249,12 +250,13 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     end
     
     %% ===== READING RES4 INFO =====
-    SensorPositionMat = panel_realtime('ReadBufferRes4', hostIP, hostPort);
+    [SensorPositionMat, ChannelTypes] = panel_realtime('ReadBufferRes4', hostIP, hostPort);
     % Add channel file to the SensorPositions study
     SensorPositionFile = db_set_channel(iStudyChan, SensorPositionMat, 2, 2); % ChannelReplace and ChannelAlign without confirmation.
-    iHeadLoc = find(strcmp({RealtimeChannelMat.Channel.Type}, 'HLU'));
-    [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLoc).Name});
-    iHeadLoc = iHeadLoc(iSortHlu); % Probably not needed.
+    iHeadLoc = find(strcmp({SensorPositionMat.Channel.Type}, 'HLU'));
+    iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
+    [Unused, iSortHlu] = sort({SensorPositionMat.Channel(iHeadLoc).Name});
+    iBufHeadLoc = iBufHeadLoc(iSortHlu); % Probably not needed.
     
     %% ===== HEAD TRACKING =====
     % Display subject's head
@@ -300,10 +302,9 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     InitVertices = get(hHelmetPatch, 'Vertices');
     
     % Loop to update positions
-    % Setup global realtime configuration
     while (1)
         % Read the last fiducial positions
-        DataMat = panel_realtime('GetBufferData', false, iHeadLoc);
+        DataMat = panel_realtime('GetBufferData', false, iBufHeadLoc);
         % Average in time and convert to mm.
         Fid = mean(DataMat, 2) ./ 1e3; % single column
         % Get fiducial positions
@@ -360,6 +361,8 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
         % Wait
         pause(LoopPeriod);
     end
+    % Exit cleanly.
+    clear buffer
 end
 %% SaveAlignCallback
 function SaveAlignCallback(source,callbackdata)

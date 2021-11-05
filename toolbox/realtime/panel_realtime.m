@@ -29,7 +29,7 @@ eval(macro_method);
 end
 
 %% ===== CREATE PANEL =====
-function bstPanelNew = CreatePanel() %#ok<DEFNU>
+function bstPanelNew = CreatePanel() 
     panelName = 'Realtime';
     % Java initializations
     import java.awt.*;
@@ -147,8 +147,8 @@ function RTConfig = GetTemplate()
         'MegRefCoef',       [], ...     % third gradiant coefficients
         'ChannelGains',     [], ...     % channel gains to be applied to buffer data
         'iStim',            [], ...     % indices of stim channels
-        'iMEG',             [], ...     % indices of MEG channels
-        'iMEGREF',          [], ...     % indices of MEG ref channels
+        'iMeg',             [], ...     % indices of MEG channels
+        'iMegRef',          [], ...     % indices of MEG ref channels
         'iHeadLoc',     [], ...     % indices of head localization channels
         'nBlockSmooth',     0, ...      % smoothing (number of buffer chunks);
         'SmoothingFilter',  [], ...     % median filter smoothing for the display (# of blocks) 
@@ -208,16 +208,16 @@ function RegisterSubject_Callback(h, ev)
     db_set_template( iSubject, sTemplate(1), 0 )
     
     % ===== Prepare condition: HeadPoints
-    iStudy = db_add_condition(SubjectName, 'HeadPoints');
+    db_add_condition(SubjectName, 'HeadPoints');
         
     % ===== Prepare condition: Noise
-    iStudy = db_add_condition(SubjectName, 'Noise');
+    db_add_condition(SubjectName, 'Noise');
 
     % ===== Prepare condition: RealtimeData
-    iStudy = db_add_condition(SubjectName, 'RealtimeData');
+    db_add_condition(SubjectName, 'RealtimeData');
     
     % ===== Prepare condition: CleanSSP
-    iStudy = db_add_condition(SubjectName, 'CleanSSP');
+    db_add_condition(SubjectName, 'CleanSSP');
 
     % Reload subject
     db_reload_subjects(iSubject);
@@ -313,7 +313,6 @@ function hdr = InitFieldtripBuffer(ft_host, ft_port)
     [isInstalled, errMsg, PlugFt] = bst_plugin('Install', 'fieldtrip');
     if ~isInstalled
         error('FieldTrip plugin required (full version, not lite which Brainstorm would get by default). %s', errMsg);
-        return;
     end
     ft_dir = bst_fileparts(which(PlugFt.TestFile));
     % Add fieldtrip buffer to path
@@ -442,8 +441,8 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     % channel indices
     % TODO: this should be selected by type, multiple stim channel possibilities.
     RTConfig.iStim = find(strcmpi({RealtimeChannelMat.Channel.Name},'UPPT001'));     % find the stimulation channel from parallel port
-    RTConfig.iMEG = good_channel(RealtimeChannelMat.Channel,[],'MEG');
-    RTConfig.iMEGREF = good_channel(RealtimeChannelMat.Channel,[],'MEG REF');
+    RTConfig.iMeg = good_channel(RealtimeChannelMat.Channel,[],'MEG');
+    RTConfig.iMegRef = good_channel(RealtimeChannelMat.Channel,[],'MEG REF');
     % Head localization channels
     iHeadLoc = find(strcmp({RealtimeChannelMat.Channel.Type}, 'HLU'));
     [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLoc).Name});
@@ -458,7 +457,7 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     hdr = buffer('get_hdr', [], RTConfig.FThost, RTConfig.FTport);
     RTConfig.SampRate = hdr.fsample;
     RTConfig.prevSample = hdr.nsamples;
-    RTConfig.ChunkSamples = 
+    RTConfig.ChunkSamples = FindAcquisitionBlockSize(); 
     
     blocktime = str2double(char(ctrl.jTextBlock.getText()))/1000; %ms -> sec
     chnktime = RTConfig.ChunkSamples/RTConfig.SampRate;
@@ -520,7 +519,7 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
         verts=[];
         for ii = 1:length(RTConfig.scoutName)
             iScout = find(strcmpi({sSurf.Atlas(sSurf.iAtlas).Scouts.Label},RTConfig.scoutName{ii}));
-            verts = [verts sSurf.Atlas(sSurf.iAtlas).Scouts(iScout).Vertices];
+            verts = [verts sSurf.Atlas(sSurf.iAtlas).Scouts(iScout).Vertices]; %#ok<AGROW>
         end
         RTConfig.ScoutVertices = verts; % group all scouts together
     end
@@ -585,7 +584,7 @@ function [ChannelMat, ChannelGains] = SetupRealtimeChannelFile(Subject, ft_host,
 end
 
 %% Read buffer header res4 
-function [ChannelMat, ChannelGains] = ReadBufferRes4(ft_host, ft_port)
+function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_port)
     % Read *.res4 and create channel file
     
     hdr = buffer('get_hdr', [], ft_host, ft_port);
@@ -602,16 +601,43 @@ function [ChannelMat, ChannelGains] = ReadBufferRes4(ft_host, ft_port)
     fid = fopen(meg4_file, 'w', 'l');
     fclose(fid);
     % Reading structured res4
-    if nargout < 2
-        ChannelMat = in_channel_ctf(res4_file);
-    else
+    % TODO: avoid brainstorm warnings due to "fake" dataset.
+    if nargout >= 1
         [ChannelMat, header] = in_channel_ctf(res4_file);
-        gain_chan = double(header.gain_chan);
-        gain_chan(gain_chan == 0) = 1; % avoid div by 0
-        if (size(gain_chan, 1) == 1)
-            gain_chan = gain_chan';
+        ChannelGains = double(header.gain_chan);
+        ChannelGains(ChannelGains == 0) = 1; % avoid div by 0
+    else
+        ChannelMat = in_channel_ctf(res4_file);
+    end
+    
+    % Res4 returns info about what is being recorded, not the channels being
+    % sent to the buffer.  So we need to filter by channel names. But we also
+    % need all MEG channels to display the helmet.
+    % Channel file indices of channels present in the buffer
+    [Unused, ChannelTypes.iChan] = ismember(hdr.channel_names, {ChannelMat.Channel.Name});
+    % Channel file indices of all MEG channels 
+    ChannelTypes.iMegFull = good_channel(ChannelMat.Channel,[],'MEG');
+    % Channel file indices of MEG channels in the buffer
+    ChannelTypes.iMeg = ChannelTypes.iMegFull(ismember(ChannelTypes.iMegFull, ChannelTypes.iChan));
+    % Full MegRefCoef matrix indices for MEG channels in the buffer
+    [Unused, iMegCoefs] = ismember(ChannelTypes.iMeg, ChannelTypes.iMegFull);
+    % Buffer indices for MEG channels
+    ChannelTypes.iBufMeg = good_channel(ChannelMat.Channel(ChannelTypes.iChan),[],'MEG');
+    % Buffer indices for MEG REF channels
+    iBufMegRef = good_channel(ChannelMat.Channel(ChannelTypes.iChan),[],'MEG REF');
+    nMegRef = numel(iBufMegRef);
+    % For MEG channels, we need all references.
+    if ~isempty(ChannelTypes.iMeg) 
+        if nMegRef ~= size(ChannelMat.MegRefCoef, 2)
+            error('Inconsistent number of MEG reference channels: %d, expecting %d.', ...
+                nMegRef, size(ChannelMat.MegRefCoef, 2));
         end
-        ChannelGains = gain_chan;
+        ChannelMat.MegRefCoef = ChannelMat.MegRefCoef(iMegCoefs, :);
+    else
+        ChannelMat.MegRefCoef = [];
+    end
+    if nargout >= 1
+        ChannelGains = ChannelGains(ChannelTypes.iChan)';
     end
 end
 
@@ -903,17 +929,17 @@ end
 %     % Apply gains
 %     dat(1:length(RTConfig.ChannelGains),:) = bst_bsxfun(@rdivide, dat(1:length(RTConfig.ChannelGains),:), RTConfig.ChannelGains);
 %     % Apply 3rd order gradient
-%     Cmegdat = dat(RTConfig.iMEG,:) - RTConfig.MegRefCoef*dat(RTConfig.iMEGREF,:);  % Clean MEG data
+%     Cmegdat = dat(RTConfig.iMeg,:) - RTConfig.MegRefCoef*dat(RTConfig.iMegRef,:);  % Clean MEG data
 %     % Remove baseline
 %     Cmegdat = Cmegdat - repmat(mean(Cmegdat,2),1,RTConfig.BlockSamples);
 %     % Apply EOG and ECG SSP projectors 
 %     if ~isempty(RTConfig.Projector)
 %         Cmegdat = RTConfig.Projector * Cmegdat;
 %     end
-%     dat(RTConfig.iMEG,:) = Cmegdat;
+%     dat(RTConfig.iMeg,:) = Cmegdat;
 % end
 
-%% HEAD TRACKING AND DELAY ESTIMATION
+%% HEAD TRACKING AND DELAY ESTIMATION (under construction)
 function CheckHeadMovement()
 
     BlockTimeLength = RTConfig.BlockSamples/RTConfig.SampRate;
