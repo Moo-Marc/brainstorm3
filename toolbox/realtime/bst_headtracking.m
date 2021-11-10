@@ -69,14 +69,21 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     LoopPeriod = 0.1; % Wait time at each head position calculation, in seconds.
     
     % Database
-    ProtocolName  =             'HeadTracking';
-    SubjectName   =             'HeadMaster';
-    ConditionHeadPoints =       'HeadPoints'; % Used to warp the head surface
-    ConditionChan =             'SensorPositions'; % Used to update sensor locations in real-time
-    ConditionRealtimeAlign =    'RealtimeAlign'; % Used for realtime alignment of previous head position
+    ProtocolName  =          'HeadTracking';
+    SubjectName   =          'HeadMaster';
+    ConditionHeadPoints =    'HeadPoints'; % Used to warp the head surface
+    ConditionChan =          'SensorPositions'; % Used to update sensor locations in real-time
+    ConditionRealtimeAlign = 'RealtimeAlign'; % Used for realtime alignment of previous head position
     % Brainstorm
-    bst_dir =       bst_get('BrainstormHomeDir');
+    global GlobalData;
+    if isempty(GlobalData)
+        % Start brainstorm.
+        brainstorm;
+    end
+    clearvars GlobalData; % from this workspace only
+    bst_dir = bst_get('BrainstormHomeDir');
     
+    % Start local real-time buffer (if 'localhost') or connect to remote buffer.
     hdr = panel_realtime('InitFieldtripBuffer', hostIP, hostPort);
     if isempty(hdr)
         error('Unable to initialize or connect to real-time buffer.');
@@ -154,8 +161,8 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     %% ===== PREPARE CONDITION: HEADPOINTS =====
     % Get condition
     [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(SubjectName, ConditionHeadPoints));
-    % If warping: we need a channel file in HeadPoints, this will be populated
-    % with the head points measured and saved in a .pos file
+    % If warping: we need a channel file in HeadPoints condition. This will be
+    % populated with the head points measured and saved in a .pos file
     if isWarp
         % Create if condition doesnt exist
         if isempty(sStudy)
@@ -163,7 +170,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
             sStudy = bst_get('Study', iStudy);
         end
         
-        % Copy default channel file to this condition
+        % Copy default channel file to this condition. Sensor locations not used.
         DefChannelFile = bst_fullfile(bst_dir, 'defaults', 'meg', 'channel_ctf_default.mat');
         file_copy(DefChannelFile, bst_fileparts(file_fullpath(sStudy.FileName)));
         % Reload condition
@@ -191,8 +198,9 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
         
         % Copy head points
         ChannelMat.HeadPoints = HeadMat.HeadPoints;
-        % TODO: Do we want to switch from coils to digitized anat coords here?
         % Force re-alignment on the new set of NAS/LPA/RPA (switch from CTF coil-based to SCS anatomical-based coordinate system)
+        % This is used for head point coordinates only here.
+        % TODO: is it using MRI anat points here for defining SCS
         ChannelMat = channel_detect_type(ChannelMat, 1, 0);
         save(HPChannelFile, '-struct', 'ChannelMat');
         
@@ -252,6 +260,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     %% ===== READING RES4 INFO =====
     [SensorPositionMat, ChannelTypes] = panel_realtime('ReadBufferRes4', hostIP, hostPort);
     % Add channel file to the SensorPositions study
+    % TODO: cannot do alignment here, no head points!  Is this ok or should we copy head points?
     SensorPositionFile = db_set_channel(iStudyChan, SensorPositionMat, 2, 2); % ChannelReplace and ChannelAlign without confirmation.
     iHeadLoc = find(strcmp({SensorPositionMat.Channel.Type}, 'HLU'));
     iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
@@ -305,6 +314,11 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     while (1)
         % Read the last fiducial positions
         DataMat = panel_realtime('GetBufferData', false, iBufHeadLoc);
+        if isempty(DataMat)
+            % This can happen when starting a new recording.
+            pause(1);
+            continue;
+        end
         % Average in time and convert to mm.
         Fid = mean(DataMat, 2) ./ 1e3; % single column
         % Get fiducial positions

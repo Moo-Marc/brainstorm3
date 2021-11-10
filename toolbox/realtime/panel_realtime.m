@@ -146,10 +146,11 @@ function RTConfig = GetTemplate()
         'SampRate',         [], ...     % sampling rate
         'MegRefCoef',       [], ...     % third gradiant coefficients
         'ChannelGains',     [], ...     % channel gains to be applied to buffer data
-        'iStim',            [], ...     % indices of stim channels
-        'iMeg',             [], ...     % indices of MEG channels
-        'iMegRef',          [], ...     % indices of MEG ref channels
-        'iHeadLoc',     [], ...     % indices of head localization channels
+        'iStim',            [], ...     % channel-file indices of stim channels
+        'iMeg',             [], ...     % channel-file indices of MEG channels
+        'iMegRef',          [], ...     % channel-file indices of MEG ref channels
+        'iHeadLoc',         [], ...     % channel-file indices of head localization channels
+        'iBufHeadLoc',      [], ...     % buffer indices of head localization channels
         'nBlockSmooth',     0, ...      % smoothing (number of buffer chunks);
         'SmoothingFilter',  [], ...     % median filter smoothing for the display (# of blocks) 
         'RefLength',        0, ...      % reference period (seconds)
@@ -435,18 +436,21 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     bst_progress('start', 'Initialize realtime collection', 'Checking channel information');
 
     % ===== Channel info
-    [RealtimeChannelMat, RTConfig.ChannelGains] = SetupRealtimeChannelFile(Subject, RTConfig.FThost, RTConfig.FTport);
+    [RealtimeChannelMat, ChannelTypes, RTConfig.ChannelGains] = SetupRealtimeChannelFile(Subject, RTConfig.FThost, RTConfig.FTport);
     % noise compensation
     RTConfig.MegRefCoef = RealtimeChannelMat.MegRefCoef;
     % channel indices
     % TODO: this should be selected by type, multiple stim channel possibilities.
     RTConfig.iStim = find(strcmpi({RealtimeChannelMat.Channel.Name},'UPPT001'));     % find the stimulation channel from parallel port
-    RTConfig.iMeg = good_channel(RealtimeChannelMat.Channel,[],'MEG');
-    RTConfig.iMegRef = good_channel(RealtimeChannelMat.Channel,[],'MEG REF');
+    RTConfig.iMeg = ChannelTypes.iMeg;
+    RTConfig.iMegRef = ChannelTypes.iMegRef;
     % Head localization channels
     iHeadLoc = find(strcmp({RealtimeChannelMat.Channel.Type}, 'HLU'));
     [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLoc).Name});
     RTConfig.iHeadLoc = iHeadLoc(iSortHlu); % Probably not needed.
+    iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
+    [Unused, iSortHlu] = sort({SensorPositionMat.Channel(iHeadLoc).Name});
+    RTConfig.iBufHeadLoc = iBufHeadLoc(iSortHlu); % Probably not needed.
     % We don't apply gains to head loc channels (and following).
     RTConfig.ChannelGains(iHeadLoc(1):end) = [];
     
@@ -553,9 +557,9 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
 end
 
 %% Setup Realtime Channel File
-function [ChannelMat, ChannelGains] = SetupRealtimeChannelFile(Subject, ft_host, ft_port)
+function [ChannelMat, ChannelTypes, ChannelGains] = SetupRealtimeChannelFile(Subject, ft_host, ft_port)
     
-    [ChannelMat, ChannelGains] = ReadBufferRes4(ft_host, ft_port); 
+    [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_port); 
     
     % Add channel file to condition RealtimeData
     [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(Subject, 'RealtimeData'));
@@ -601,13 +605,11 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     fid = fopen(meg4_file, 'w', 'l');
     fclose(fid);
     % Reading structured res4
-    % TODO: avoid brainstorm warnings due to "fake" dataset.
+    % Use evalc to avoid brainstorm warnings due to "fake" dataset.
+    [BstWarnings, ChannelMat, header] = evalc('in_channel_ctf(res4_file)');
     if nargout >= 1
-        [ChannelMat, header] = in_channel_ctf(res4_file);
         ChannelGains = double(header.gain_chan);
         ChannelGains(ChannelGains == 0) = 1; % avoid div by 0
-    else
-        ChannelMat = in_channel_ctf(res4_file);
     end
     
     % Res4 returns info about what is being recorded, not the channels being
@@ -616,15 +618,17 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     % Channel file indices of channels present in the buffer
     [Unused, ChannelTypes.iChan] = ismember(hdr.channel_names, {ChannelMat.Channel.Name});
     % Channel file indices of all MEG channels 
-    ChannelTypes.iMegFull = good_channel(ChannelMat.Channel,[],'MEG');
+    ChannelTypes.iMegFull = good_channel(ChannelMat.Channel, [], 'MEG');
     % Channel file indices of MEG channels in the buffer
     ChannelTypes.iMeg = ChannelTypes.iMegFull(ismember(ChannelTypes.iMegFull, ChannelTypes.iChan));
+    % Channel file indices of MEG REF channels in the buffer
+    ChannelTypes.iMegRef = good_channel(ChannelMat.Channel, [], 'MEG REF');
     % Full MegRefCoef matrix indices for MEG channels in the buffer
     [Unused, iMegCoefs] = ismember(ChannelTypes.iMeg, ChannelTypes.iMegFull);
     % Buffer indices for MEG channels
-    ChannelTypes.iBufMeg = good_channel(ChannelMat.Channel(ChannelTypes.iChan),[],'MEG');
+    ChannelTypes.iBufMeg = good_channel(ChannelMat.Channel(ChannelTypes.iChan), [], 'MEG');
     % Buffer indices for MEG REF channels
-    iBufMegRef = good_channel(ChannelMat.Channel(ChannelTypes.iChan),[],'MEG REF');
+    iBufMegRef = good_channel(ChannelMat.Channel(ChannelTypes.iChan), [], 'MEG REF');
     nMegRef = numel(iBufMegRef);
     % For MEG channels, we need all references.
     if ~isempty(ChannelTypes.iMeg) 
@@ -654,7 +658,7 @@ function HeadPositionRaw = HeadLocalization()
     ChannelMat = in_bst_channel(file_fullpath(sStudy.Channel.FileName));
     
     % Read the last HLC data available from the buffer.
-    DataMat = GetBufferData(false, RTConfig.iHeadLoc);    
+    DataMat = GetBufferData(false, RTConfig.iBufHeadLoc);    
     % Extract fiducial points and add them to ChannelMat
     hlc = mean(DataMat, 2)/1e6;  % positions should be in "m". um => m
     ChannelMat.SCS.NAS = hlc(1:3)'; % in m
