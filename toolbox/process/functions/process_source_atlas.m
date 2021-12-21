@@ -182,7 +182,13 @@ function OutputFiles = Run(sProcess, sInput) %#ok<DEFNU>
         
         % === COMPUTE SCOUT VALUES ===
         if (ResultsMat.nComponents == 1)
-            isFlipSign = strcmpi(sInput.FileType, 'results') && isempty(strfind(sInput.FileName, '_abs_zscore'));
+            isFlipSign = strcmpi(sInput.FileType, 'results') && ...
+                         isempty(strfind(sInput.FileName, '_abs')) && ...
+                         isempty(strfind(sInput.FileName, '_norm')) && ...
+                         isempty(strfind(sInput.FileName, 'NIRS'))  && ...
+                         isempty(strfind(sInput.FileName, 'Summed_sensitivities'));
+
+                     
             ImageGridAmp(iScout,:) = bst_scout_value(Fscout, sScouts(iScout).Function, ScoutOrient, ResultsMat.nComponents, [], isFlipSign);
         elseif isNorm
             ImageGridAmp(iScout,:) = bst_scout_value(Fscout, sScouts(iScout).Function, ScoutOrient, ResultsMat.nComponents, 'norm');

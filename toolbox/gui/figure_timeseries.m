@@ -34,7 +34,7 @@ function varargout = figure_timeseries( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2020
+% Authors: Francois Tadel, 2008-2021
 %          Martin Cousineau, 2017
 %          Marc Lalancette, 2020
 
@@ -870,13 +870,13 @@ function DrawTimeSelection(hFig)
             % Get selection label
             hTextTimeSel = findobj(hFig, '-depth', 1, 'Tag', 'TextTimeSel');
             if ~isempty(hTextTimeSel)
-                % Format string
+                % Format string: Selection
                 strMin = panel_time('FormatValue', min(GraphSelection), timeUnit, precision);
                 strMax = panel_time('FormatValue', max(GraphSelection), timeUnit, precision);
                 strSelection = ['Selection: [' strMin ' ' timeUnit ', ' strMax ' ' timeUnit ']'];
-                strLength = sprintf('      Duration: [%d ms]', round(abs(GraphSelection(2) - GraphSelection(1)) * 1000));
-                
-                
+                % Format string: Duration
+                strDur = panel_time('FormatValue', max(abs(GraphSelection(2) - GraphSelection(1))), timeUnit, precision);
+                strLength = sprintf('      Duration: [%s %s]', strDur, timeUnit);
                 % Update label
                 set(hTextTimeSel, 'Visible', 'on', 'String', [strSelection, strLength, strMinMax]);
             end
@@ -1066,11 +1066,15 @@ function FigureZoom(hFig, direction, Factor, center)
             % Start by displaying the full resolution if necessary
             [hFig, iFig, iDS] = bst_figures('GetFigure', hFig);
             if (GlobalData.DataSet(iDS).Figure(iFig).Handles(1).DownsampleFactor > 1)
-                set(hFig, 'Pointer', 'watch');
-                drawnow;
-                GlobalData.DataSet(iDS).Figure(iFig).Handles(1).DownsampleFactor = 1;
-                figure_timeseries('PlotFigure', iDS, iFig, [], [], 1);
-                set(hFig, 'Pointer', 'arrow');
+                if ~isempty(GlobalData.DataSet(iDS).DataFile)
+                    set(hFig, 'Pointer', 'watch');
+                    drawnow;
+                    GlobalData.DataSet(iDS).Figure(iFig).Handles(1).DownsampleFactor = 1;
+                    figure_timeseries('PlotFigure', iDS, iFig, [], [], 1);
+                    set(hFig, 'Pointer', 'arrow');
+                else
+                    disp('BST> Warning: Cannot reload file with full resolution.');
+                end
             end
             % Get current time frame
             hCursor = findobj(hAxes(1), '-depth', 1, 'Tag', 'Cursor');
@@ -1438,7 +1442,7 @@ function FigureKeyPressedCallback(hFig, ev)
                         % Get study
                         [sStudy, iStudy, iData] = bst_get('DataFile', DataFile);
                         % Change status
-                        process_detectbad('SetTrialStatus', DataFile, ~sStudy.Data(iData).BadTrial);
+                        SetTrialStatus(hFig, DataFile, ~sStudy.Data(iData).BadTrial);
                     case 'raw'
                         panel_record('RejectTimeSegment');
                 end
@@ -1653,7 +1657,7 @@ function FigureKeyPressedCallback(hFig, ev)
                                     % Look for last page event marked (after the current one)
                                     for i = 1:length(pageEventNames)
                                         [sEvent, iEvent] = panel_record('GetEvents', pageEventNames{i});
-                                        if ~isempty(sEvent) && ~isempty(sEvent.times) && (pageEnd < sEvent.times(2,end))
+                                        if ~isempty(sEvent) && ~isempty(sEvent.times) && (size(sEvent.times,2) == 2) && (pageEnd < sEvent.times(2,end))
                                             pageEnd = sEvent.times(2,end);
                                             iLastEvent = iEvent;
                                             iLastOccur = size(sEvent.times, 2);
@@ -2198,6 +2202,12 @@ function DisplayFigurePopup(hFig, menuTitle, curTime, selChan)
         elseif strcmpi(sFile.format, 'EEG-SMRX') && isfield(sFile.header, 'timedate')
             t = sFile.header.timedate;
             dateTitle = [datestr(datenum(t(7), t(6), t(5), t(4), t(3), t(2)), 'dd-mmm-yyyy HH:MM:SS'), '.', num2str(floor(1000 * (GlobalData.UserTimeWindow.CurrentTime - floor(GlobalData.UserTimeWindow.CurrentTime))), '%03d')];
+        % Micromed TRC: Wall clock time
+        elseif strcmpi(sFile.format, 'EEG-MICROMED') && isfield(sFile.header, 'acquisition') && isfield(sFile.header.acquisition, 'sec')
+            acq = sFile.header.acquisition;
+            dstart = datenum(acq.year, acq.month, acq.day, acq.hour, acq.min, acq.sec);
+            dcur   = datenum(0, 0, 0, 0, 0, floor(GlobalData.UserTimeWindow.CurrentTime));
+            dateTitle = [datestr(dstart + dcur, 'dd-mmm-yyyy HH:MM:SS'), '.', num2str(floor(1000 * (GlobalData.UserTimeWindow.CurrentTime - floor(GlobalData.UserTimeWindow.CurrentTime))), '%03d')];
         end
     end
     % Menu title
@@ -2293,9 +2303,9 @@ function DisplayFigurePopup(hFig, menuTitle, curTime, selChan)
         % === SET TRIAL GOOD/BAD ===
         if strcmpi(GlobalData.DataSet(iDS).Measures.DataType, 'recordings')
             if (sStudy.Data(iData).BadTrial == 0)
-                jItem = gui_component('MenuItem', jPopup, [], 'Reject trial', IconLoader.ICON_BAD, [], @(h,ev)process_detectbad('SetTrialStatus', DataFile, 1));
+                jItem = gui_component('MenuItem', jPopup, [], 'Reject trial', IconLoader.ICON_BAD, [], @(h,ev)SetTrialStatus(hFig, DataFile, 1));
             else
-                jItem = gui_component('MenuItem', jPopup, [], 'Accept trial', IconLoader.ICON_GOOD, [], @(h,ev)process_detectbad('SetTrialStatus', DataFile, 0));
+                jItem = gui_component('MenuItem', jPopup, [], 'Accept trial', IconLoader.ICON_GOOD, [], @(h,ev)SetTrialStatus(hFig, DataFile, 0));
             end
             jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, KeyEvent.CTRL_MASK));
         end    
@@ -3284,17 +3294,20 @@ function PlotHandles = PlotAxes(iDS, hAxes, PlotHandles, TimeVector, F, TsInfo, 
     % Detect optimal downsample factor
     elseif ~isFastUpdate || isempty(PlotHandles.DownsampleFactor)
         % Get number of pixels in the axes
-        figPos = get(get(hAxes,'Parent'), 'Position');
-        % Keep 5 values per pixel
-        PlotHandles.DownsampleFactor = max(1, floor(length(TimeVector) / (figPos(3) -50) / DownsampleTimeSeries));
+        % figPos = get(get(hAxes,'Parent'), 'Position');
+        % nPixels = figPos(3) -50;
+        % Keep 5 values per pixel, and consider axes of 2000 pixels
+        nPixels = 2000;
+        PlotHandles.DownsampleFactor = max(1, floor(length(TimeVector) / nPixels / DownsampleTimeSeries));
     end
     % Downsample time series
-    if (PlotHandles.DownsampleFactor > 1)
+    if (PlotHandles.DownsampleFactor > 1) && ~isempty(GlobalData.DataSet(iDS).DataFile)
         TimeVector = TimeVector(1:PlotHandles.DownsampleFactor:end);
         F = F(:,1:PlotHandles.DownsampleFactor:end);
         if ~isempty(Std)
             Std = Std(:,1:PlotHandles.DownsampleFactor:end,:,:);
         end
+        disp(['BST> Warning: Downsampling signals for display (keeping 1 value every ' num2str(PlotHandles.DownsampleFactor) ')']);
     end
 
     % ===== SWITCH DISPLAY MODE =====
@@ -3442,9 +3455,13 @@ function PlotHandles = PlotAxesButterfly(iDS, hAxes, PlotHandles, TsInfo, TimeVe
     % ===== YLIM =====
     % Get data units
     Fmax = max(abs(PlotHandles.DataMinMax));
-    [fScaled, fFactor, fUnits] = bst_getunits( Fmax, TsInfo.Modality, TsInfo.FileName );
+    [fScaled, fFactor, fUnits] = bst_getunits( Fmax, TsInfo.Modality, TsInfo.FileName);
+
     % Plot factor has changed
     isFactorChanged = ~isequal(fFactor, PlotHandles.DisplayFactor);
+    if isFactorChanged
+        GlobalData.DataSet(iDS).Measures.DisplayUnits = fUnits;
+    end
     % Set display Factor
     PlotHandles.DisplayFactor = fFactor;
     PlotHandles.DisplayUnits  = fUnits;
@@ -3616,7 +3633,7 @@ function PlotHandles = PlotAxesButterfly(iDS, hAxes, PlotHandles, TsInfo, TimeVe
     % If there are more than 5 channel
     if bst_get('DisplayGFP') && ~strcmpi(GlobalData.DataSet(iDS).Measures.DataType, 'stat') ...
                              && (GlobalData.DataSet(iDS).Measures.NumberOfSamples > 2) && (size(F,1) > 5) ...
-                             && ~isempty(TsInfo.Modality) && ~strcmpi(TsInfo.Modality, 'sources') && ~strcmpi(TsInfo.Modality, 'results') && ~strcmpi(TsInfo.Modality, 'sloreta') && (TsInfo.Modality(1) ~= '$')
+                             && ~isempty(TsInfo.Modality) && ismember(TsInfo.Modality, {'EEG','MEG','EEG','SEEG'})
         GFP = sqrt(sum((F * fFactor).^2, 1));
         PlotGFP(hAxes, TimeVector, GFP, TsInfo.FlipYAxis, isFastUpdate);
     end
@@ -5068,6 +5085,26 @@ function ReloadRawTimeBars()
         PlotRawTimeBar(iDS, iFig);
         % Resize
         ResizeCallback(hFig);
+    end
+end
+
+
+%% ===== SET TRIAL STATUS =====
+function SetTrialStatus(hFig, DataFile, isBad)
+    % Save modified markers (only when switching to good)
+    if ~isBad
+        panel_record('SaveModifications');
+    end
+    % Change trial status
+    process_detectbad('SetTrialStatus', DataFile, isBad);
+    % Update modified markers (only when switching to good)
+    if ~isBad
+        % Reload file
+        bst_memory('LoadDataFile', DataFile, 1);
+        % Reload figure
+        bst_figures('ReloadFigures', hFig, 1);
+        % Update record panel
+        panel_record('UpdatePanel', hFig);
     end
 end
 

@@ -22,7 +22,7 @@ function varargout = figure_topo( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2020
+% Authors: Francois Tadel, 2008-2021
 
 eval(macro_method);
 end
@@ -347,7 +347,7 @@ function [F, Time, selChan, overlayLabels, dispNames, StatThreshUnder, StatThres
                             if ~isempty(iRow2) && ~isempty(iRow3)
                                 F{iFile}(i,:) = sqrt(TF(iRow2(1),:).^2 + TF(iRow3(1),:).^2);
                             end
-                        % Reglar map
+                        % Regular map
                         else
                             % Look for a sensor that is required in TF matrix
                             iRow = find(strcmpi(selrow, RowNames));
@@ -431,6 +431,14 @@ function [F, Time, selChan, overlayLabels, dispNames, StatThreshUnder, StatThres
             overlayLabels = ReadFiles;
         end
         [commonLabel, overlayLabels] = str_common_path(overlayLabels);
+    end
+    % Replace NaN with zeros
+    for iFile = 1:length(F)
+        Nnan = nnz(isnan(F{iFile}));
+        if (Nnan > 0)
+            disp(sprintf('BST> WARNING: %d NaN values replaced with zeros.', Nnan));
+            F{iFile}(isnan(F{iFile})) = 0;
+        end
     end
     % Return only one file if required
     if ~isMultiOutput
@@ -1007,7 +1015,7 @@ function CreateTopo2dLayout(iDS, iFig, hAxes, Channel, Vertices, modChan)
                 'Parent',              hAxes);
         end
         % Why do we have to print something else to have the labels displayed??????
-        line([-1,-1],[-1,-1],[-1,-1], 'color', [1 1 1]);
+        line([-1,-1],[-1,-1],[-1,-1], 'color', [1 1 1], 'Parent', hAxes);
     end
     
     % ===== LEGEND =====

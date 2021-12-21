@@ -122,6 +122,31 @@ if isfield(nirs,'CondNames')
 end
 
 
+% Detect saturation
+if isfield(nirs,'brainsight') && ~isempty(find(nirs.brainsight.acquisition.saturation))
+    event = db_template('event');
+    
+    saturation = nirs.brainsight.acquisition.saturation > 0 & nirs.brainsight.acquisition.digitalSaturation > 0;
+    saturated_channels = unique(nirs.brainsight.acquisition.saturation(saturation));
+    
+    for i_chan = 1:length(saturated_channels)
+        
+        saturation_chan = nirs.brainsight.acquisition.saturation == saturated_channels(i_chan) & nirs.brainsight.acquisition.digitalSaturation == saturated_channels(i_chan);
+        evtTime     =  find(saturation_chan) ./ sFile.prop.sfreq;
+        channels_saturated = cell(1, length(evtTime));
+        channels_saturated{saturated_channels(i_chan)} = 'saturated channel';
+
+        % Events structure
+        event.label      = sprintf('Saturation %d',saturated_channels(i_chan));
+        event.times      = evtTime(:)';
+        event.epochs     = ones(1, length(evtTime));
+        event.notes      = cell(1, length(evtTime));
+        event.channels   = channels_saturated;
+        event.reactTimes = [];
+        sFile.events = [sFile.events event];
+    end    
+end
+
 
 ChannelMat = db_template('channelmat');
 ChannelMat.Comment = 'NIRS-BRS channels';
@@ -193,6 +218,29 @@ if exist(optodes_file, 'file') == 2
 else % take optode coordinates from nirs data structure
     src_coords = nirs.SD.SrcPos;
     det_coords = nirs.SD.DetPos;
+    
+    % If src and det are 2D pos, then set z to 1 to avoid issue at (x=0,y=0,z=0)
+    if all(src_coords(:,3)==0) && all(det_coords(:,3)==0)
+        src_coords(:,3) = 1;
+        det_coords(:,3) = 1;
+    end
+    if ~isfield(nirs.SD,'SpatialUnit')
+        scale = 0.01; % assume coordinate are in cm
+    else    
+        switch strtrim(nirs.SD.SpatialUnit)
+            case 'mm'
+                scale = 0.001;
+            case 'cm'
+                scale = 0.01;
+            case 'm'
+                scale = 1;
+            otherwise
+                scale = 1;
+        end
+    end
+    % Apply units
+    src_coords = scale .* src_coords;
+    det_coords = scale .* det_coords;
 end
 
 

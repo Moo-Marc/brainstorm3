@@ -153,19 +153,36 @@ if iscell(MriFile)
 else
     sMri = bst_history('add', sMri, 'import', ['Import from: ' MriFile]);
 end
-    
+
+
 %% ===== GET ATLAS LABELS =====
 % Try to get associated labels
 if isempty(Labels) && ~iscell(MriFile)
-    Labels = mri_getlabels(MriFile, sMri);
+    Labels = mri_getlabels(MriFile, sMri, isAtlas);
 end
 % Save labels in the file structure
-if ~isempty(Labels)
+if ~isempty(Labels)   % Labels were found in the input folder
     sMri.Labels = Labels;
     tagAtlas = '_volatlas';
     isAtlas = 1;
+elseif isAtlas    % Volume was explicitly imported as an atlas
+    tagAtlas = '_volatlas';
 else
     tagAtlas = '';
+end
+% Get atlas comment
+if isAtlas && isempty(Comment) && ~iscell(MriFile)
+    [fPath, fBase, fExt] = bst_fileparts(MriFile);
+    switch (fBase)
+        case 'aseg'
+            Comment = 'ASEG';
+        case 'aparc+aseg'
+            Comment = 'Deskian-Killiany';
+        case 'aparc.a2009s+aseg'
+            Comment = 'Destrieux';
+        case {'aparc.DKTatlas+aseg', 'aparc.mapped+aseg'}  % FreeSurfer, FastSurfer
+            Comment = 'DKT';
+    end
 end
 
 

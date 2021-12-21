@@ -50,7 +50,9 @@ function [OutputFiles, Messages, isError] = bst_timefreq(Data, OPTIONS)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2010-2017
+% Authors: Francois Tadel, 2010-2021
+%          Hossein Shahabi, 2020-2021
+%          Raymundo Cassani, 2020-2021
 
 % ===== DEFAULT OPTIONS =====
 Def_OPTIONS.Comment         = '';
@@ -130,6 +132,12 @@ elseif OPTIONS.SaveKernel && ischar(Data{1}) && any(~cellfun(@(c)isempty(strfind
     Messages = 'Cannot use the optimization option "save the inversion kernel" with continuous raw files.';
     isError = 1;
     return;
+end
+% Cannot use the options "normalized units" and "frequency bands" at the same time
+if strcmpi(OPTIONS.Method, 'psd') && strcmpi(OPTIONS.PowerUnits, 'normalized') && ~isempty(FreqBands)
+    Messages = 'Cannot use the options "normalized units" and "frequency bands" together.';
+    isError = 1;
+    return;      
 end
         
 % Progress bar
@@ -498,7 +506,7 @@ for iData = 1:length(Data)
                 end
             end
             % Invalid frequencies
-            if any(OPTIONS.Freqs <= 0)
+            if iscell(OPTIONS.Freqs) || isempty(OPTIONS.Freqs) || any(OPTIONS.Freqs <= 0)
                 Messages = 'Invalid frequency definition: All frequencies must be > 0.';
                 isError = 1;
                 return;
@@ -825,9 +833,16 @@ end
         % Apply time and frequency bands
         if ~isempty(FreqBands) || ~isempty(OPTIONS.TimeBands)
             if strcmpi(OPTIONS.Method, 'hilbert') && ~isempty(OPTIONS.TimeBands)
-                FileMat = process_tf_bands('Compute', FileMat, [], OPTIONS.TimeBands);
+                [FileMat, Messages] = process_tf_bands('Compute', FileMat, [], OPTIONS.TimeBands);
             elseif strcmpi(OPTIONS.Method, 'morlet') || strcmpi(OPTIONS.Method, 'psd') 
-                FileMat = process_tf_bands('Compute', FileMat, FreqBands, OPTIONS.TimeBands);
+                [FileMat, Messages] = process_tf_bands('Compute', FileMat, FreqBands, OPTIONS.TimeBands);
+            end
+            if isempty(FileMat)
+                if ~isempty(Messages)
+                    error(Messages);
+                else
+                    error('Unknow error while processing time or frequency bands.');
+                end
             end
         end
         
@@ -843,6 +858,8 @@ end
                 % Look for a trial tag in the filename
                 iTagStart = strfind(fBase, '_trial');
                 if ~isempty(iTagStart)
+                    % Extract the last occurrence in case it's also in the folder name
+                    iTagStart = iTagStart(end);
                     iTagStop = iTagStart + find(fBase(iTagStart+6:end) == '_',1) + 4;
                     if isempty(iTagStop)
                         iTagStop = length(fBase);

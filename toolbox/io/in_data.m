@@ -83,7 +83,7 @@ tmpDir = bst_get('BrainstormTmpDir');
 [filePath, fileBase, fileExt] = bst_fileparts(DataFile);
 % Reading as raw continuous?
 isRaw = ismember(FileFormat, {'FIF', 'CTF', 'CTF-CONTINUOUS', '4D', 'KIT', 'RICOH', 'KDF', 'ITAB', ...
-    'MEGSCAN-HDF5', 'EEG-ANT-CNT', 'EEG-ANT-MSR', 'EEG-BRAINAMP', 'EEG-DELTAMED', 'EEG-COMPUMEDICS-PFS', ...
+    'MEGSCAN-HDF5', 'EEG-ANT-CNT', 'EEG-ANT-MSR', 'EEG-AXION', 'EEG-BRAINAMP', 'EEG-DELTAMED', 'EEG-COMPUMEDICS-PFS', ...
     'EEG-EGI-RAW', 'EEG-NEUROSCAN-CNT', 'EEG-NEUROSCAN-EEG', 'EEG-NEUROSCAN-AVG', 'EEG-EDF', 'EEG-BDF', ...
     'EEG-EEGLAB', 'EEG-GTEC', 'EEG-MANSCAN', 'EEG-MICROMED', 'EEG-NEURALYNX', 'EEG-BLACKROCK', 'EEG-RIPPLE', 'EEG-NEURONE', ...
     'EEG-NEUROSCOPE', 'EEG-NICOLET', 'EEG-NK', 'EEG-SMR', 'EEG-SMRX', 'SPM-DAT', 'NIRS-BRS', 'BST-DATA', 'BST-BIN', ...
@@ -301,7 +301,8 @@ if isRaw
             ImportOptions.BaselineRange = initBaselineRange - BlocksToRead(iFile).TimeOffset;
         end
         % Read data block
-        [F, TimeVector] = in_fread(sFile, ChannelMat, BlocksToRead(iFile).iEpoch, BlocksToRead(iFile).iTimes, [], ImportOptions);
+        [F, TimeVector,DisplayUnits] = in_fread(sFile, ChannelMat, BlocksToRead(iFile).iEpoch, BlocksToRead(iFile).iTimes, [], ImportOptions);
+        
         % If block too small: ignore it
         if (size(F,2) < 3)
             disp(sprintf('BST> Block is too small #%03d: ignoring...', iFile));
@@ -318,6 +319,7 @@ if isRaw
         DataMat.Time     = TimeVector;
         DataMat.Device   = sFile.device;
         DataMat.nAvg     = double(BlocksToRead(iFile).nAvg);
+        DataMat.DisplayUnits = DisplayUnits;
         DataMat.DataType = 'recordings';
         % Channel flag
         if ~isempty(BlocksToRead(iFile).ChannelFlag) 
@@ -527,6 +529,7 @@ else
     importedBaseName = strrep(importedBaseName, '_data', '');
     % Process all the DataMat structures that were created
     ImportedData = repmat(db_template('Data'), [1, length(DataMat)]);
+    nTime = zeros(1, length(DataMat));
     for iData = 1:length(DataMat)
         % If subject name and condition were specified in the low-level import function
         if isfield(DataMat, 'SubjectName') && ~isempty(DataMat(iData).SubjectName) && isfield(DataMat, 'Condition') && ~isempty(DataMat(iData).Condition)
@@ -535,8 +538,7 @@ else
             newFileName = importedBaseName;
         end
         % Produce a default data filename          
-        BstDataFile = bst_fullfile(tmpDir, ['data_' newFileName '.mat']);
-        BstDataFile = file_unique(BstDataFile);
+        BstDataFile = bst_fullfile(tmpDir, ['data_' newFileName '_' sprintf('%04d', iData) '.mat']);
         
         % Add History: File name
         FileMat = DataMat(iData); 

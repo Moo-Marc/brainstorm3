@@ -20,7 +20,7 @@ function [sFile, ChannelMat] = in_fopen_smr(DataFile)
 % =============================================================================@
 %
 % Authors:  Malcolm Lidierth, 2006-2007, King's College London
-%           Adapted by Francois Tadel for Brainstorm, 2017
+%           Adapted by Francois Tadel for Brainstorm, 2017-2021
 
 
 %% ===== READ HEADER =====
@@ -101,9 +101,15 @@ end
 
 
 %% ===== READ MARKER INFORMATION =====
-for iEvt = 1:length(iMarkerChan)
+iChanMissing = [];
+for iChan = 1:length(iMarkerChan)
     % Read channel
-    [d,header] = SONGetChannel(fid, iMarkerChan(iEvt));
+    try
+        [d,header] = SONGetChannel(fid, iMarkerChan(iChan));
+    catch
+        iChanMissing = [iChanMissing, iMarkerChan(iChan)];
+        continue;
+    end
     if isempty(d) || isempty(header)
         continue;
     end
@@ -115,12 +121,21 @@ for iEvt = 1:length(iMarkerChan)
             timeEvt = d.timings(:)';
     end
     % Create event structure
-    sFile.events(iEvt).label    = header.title;
+    iEvt = length(sFile.events) + 1;
+    if ~isempty(header.title)
+        sFile.events(iEvt).label = header.title;
+    else
+        sFile.events(iEvt).label = sprintf('unknown_%02d', iEvt);
+    end
     sFile.events(iEvt).times    = round(double(timeEvt).* sFile.prop.sfreq) ./ sFile.prop.sfreq;
     sFile.events(iEvt).epochs   = ones(size(sFile.events(iEvt).times));
     sFile.events(iEvt).select   = 1;
     sFile.events(iEvt).channels = cell(1, size(sFile.events(iEvt).times, 2));
     sFile.events(iEvt).notes    = cell(1, size(sFile.events(iEvt).times, 2));
+end
+% Display missing channels
+if ~isempty(iChanMissing)
+    disp(['SON> Missing channels: ' sprintf('%d ', iChanMissing)]);
 end
 
 % Close file

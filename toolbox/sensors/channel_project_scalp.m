@@ -1,5 +1,6 @@
 function ChanLoc = channel_project_scalp(Vertices, ChanLoc)
-% CHANNEL_ALIGN_MANUAL: Align manually an electrodes net on the scalp surface of the subject.
+% CHANNEL_PROJECT_SCALP: Project EEG electrodes on a scalp surface, 
+% radially from the center of mass of the scalp surface points.
 % 
 % INPUT:
 %     - Vertices : [Mx3] positions of the scalp vertices
@@ -32,7 +33,7 @@ Vertices = bst_bsxfun(@minus, Vertices, center);
 p   = .2;
 th  = -pi-p   : 0.01 : pi+p;
 phi = -pi/2-p : 0.01 : pi/2+p;
-rVertices = tess_parametrize_new(Vertices, th, phi);
+rVertices = tess_parametrize(Vertices, th, phi);
 
 % Process each sensor
 for iChan = 1:size(ChanLoc,1)

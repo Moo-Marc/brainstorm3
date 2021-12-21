@@ -219,7 +219,7 @@ function [sFib,iFib] = LoadFibers(FibFile)
         % Create default structure
         sFib = db_template('LoadedFibers');
         % Load fibers matrix
-        FibMat = in_fibers(FibFile);
+        FibMat = load(file_fullpath(FibFile));
         % Build fibers structure
         for field = fieldnames(sFib)'
             if isfield(FibMat, field{1})
@@ -2373,7 +2373,8 @@ function [Values, iTimeBands, iRow, nComponents] = GetTimefreqValues(iDS, iTimef
         else
             nFooofRow = numel(iRow);
         end
-        Values = NaN([nFooofRow, size(GlobalData.DataSet(iDS).Timefreq(iTimefreq).TF, [2,3])]);
+        [s1 s2 s3] = size(GlobalData.DataSet(iDS).Timefreq(iTimefreq).TF);
+        Values = NaN([nFooofRow, s2, s3 ]);
         nFooofFreq = sum(isFooofFreq);
         % Check for old structure format with extra .FOOOF. level.
         if isfield(GlobalData.DataSet(iDS).Timefreq(iTimefreq).Options.FOOOF.data, 'FOOOF')
@@ -3280,7 +3281,7 @@ function isCancel = UnloadDataSets(iDataSets)
         if (iDS > length(GlobalData.DataSet))
             continue;
         end
-        isRaw = strcmpi(GlobalData.DataSet(iDS).Measures.DataType, 'raw');
+        isRaw = ~isempty(GlobalData.DataSet(iDS).Measures) && strcmpi(GlobalData.DataSet(iDS).Measures.DataType, 'raw');
         % Raw files: save events and close files
         if ~isempty(GlobalData.DataSet(iDS).Measures) && ~isempty(GlobalData.DataSet(iDS).Measures.sFile) %  && ~isempty(GlobalData.DataSet(iDS).Measures.DataType)
             % If file was modified: ask the user to save it or not
@@ -3341,8 +3342,10 @@ function isCancel = UnloadDataSets(iDataSets)
         end
         % Close all the figures
         for iFig = length(GlobalData.DataSet(iDS).Figure):-1:1
-            bst_figures('DeleteFigure', GlobalData.DataSet(iDS).Figure(iFig).hFigure, 'NoUnload', 'NoLayout');
-            drawnow
+            if isfield(GlobalData.DataSet(iDS).Figure(iFig), 'hFigure') && ~isempty(GlobalData.DataSet(iDS).Figure(iFig).hFigure)
+                bst_figures('DeleteFigure', GlobalData.DataSet(iDS).Figure(iFig).hFigure, 'NoUnload', 'NoLayout');
+                drawnow
+            end
         end
     end
     % Check that dataset still exists

@@ -93,19 +93,13 @@ end
 %% ===== COMPUTE CANONICAL SURFACES =====
 function [isOk, errMsg] = Compute(iSubject, iAnatomy, Resolution, isInteractive)
     isOk = 0;
-    errMsg = '';
     % Initialize SPM
-    bst_spm_init(isInteractive, 'ft_read_headshape');
-    % Check if SPM is in the path
-    if ~exist('spm_eeg_inv_mesh', 'file')
-        errMsg = 'SPM must be in the Matlab path to use this feature.';
+    [isInstalled, errMsg] = bst_plugin('Install', 'spm12', isInteractive);
+    if ~isInstalled
         return;
     end
-%     if ~exist('ft_read_headshape', 'file')
-%         errMsg = 'SPM subfolders must be in the Matlab path to use this feature (missing: spm12/external/fieldtrip/fileio).';
-%         return;
-%     end
-    
+    bst_plugin('SetProgressLogo', 'spm12');
+
     % ===== GET SUBJECT =====
     % Get subject 
     [sSubject, iSubject] = bst_get('Subject', iSubject);
@@ -157,7 +151,7 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, Resolution, isInteractive)
     end
     % ===== READ OUTPUT SURFACES =====
     % Read transformation from temporary .nii
-    niiMri = in_mri_nii(NiiFile);
+    niiMri = in_mri_nii(NiiFile, 0, 0, 0);
     % Create surfaces
     sHead   = CreateSurface(sMri, niiMri, export(gifti(spmMesh.tess_scalp),'patch'),  'spm_head');
     sOuter  = CreateSurface(sMri, niiMri, export(gifti(spmMesh.tess_oskull),'patch'), 'spm_outerskull');
@@ -183,7 +177,9 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, Resolution, isInteractive)
     % Save cortex
     bst_save(SpmCortexFile, sCortex, 'v7');
     db_add_surface(iSubject, SpmCortexFile, sCortex.Comment);
-
+    
+    % Remove logo
+    bst_plugin('SetProgressLogo', []);
     isOk = 1;
 end
 

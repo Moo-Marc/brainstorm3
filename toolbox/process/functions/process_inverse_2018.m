@@ -176,9 +176,11 @@ function [OutputFiles, errMessage] = Compute(iStudies, iDatas, OPTIONS)
         return;
     end
     % Check noise covariance
-    if any(cellfun(@isempty, {sChanStudies.NoiseCov}))
-        errMessage = 'No noise covariance matrix available.';
-        return;
+    for i = 1:length(sChanStudies)
+        if isempty(sChanStudies(i).NoiseCov) || ~isfield(sChanStudies(i).NoiseCov(1), 'FileName') || isempty(sChanStudies(i).NoiseCov(1).FileName)
+            errMessage = 'No noise covariance matrix available.';
+            return;
+        end
     end
     % Loop through all the channel files to find the available modalities and head model types
     AllMod = {};
@@ -255,6 +257,11 @@ function [OutputFiles, errMessage] = Compute(iStudies, iDatas, OPTIONS)
             if isShared
                 errMessage = 'Cannot compute shared kernels with this method.';
                 return
+            end
+            % Install/load brainentropy plugin
+            [isInstalled, errMessage] = bst_plugin('Install', 'brainentropy', 1);
+            if ~isInstalled
+                return;
             end
             % Default options
             MethodOptions = be_main();

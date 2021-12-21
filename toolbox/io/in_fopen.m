@@ -91,6 +91,8 @@ switch (FileFormat)
         [sFile, ChannelMat] = in_fopen_ant(DataFile);
     case 'EEG-ANT-MSR'
         [sFile, ChannelMat] = in_fopen_msr(DataFile);
+    case 'EEG-AXION'
+        [sFile, ChannelMat] = in_fopen_axion(DataFile);
     case {'EEG-BLACKROCK', 'EEG-RIPPLE'}
         [sFile, ChannelMat] = in_fopen_blackrock(DataFile);
     case 'EEG-BRAINAMP'
@@ -116,7 +118,7 @@ switch (FileFormat)
     case 'EEG-EGI-MFF'
         [sFile, ChannelMat] = in_fopen_mff(DataFile, ImportOptions, 0);
     case 'EEG-MICROMED'
-        [sFile, ChannelMat] = in_fopen_micromed(DataFile);
+        [sFile, ChannelMat] = in_fopen_micromed(DataFile, ImportOptions);
     case 'EEG-NEURONE'
         [sFile, ChannelMat] = in_fopen_neurone(DataFile);
     case 'EEG-NEUROSCAN-CNT'
@@ -178,7 +180,7 @@ switch (FileFormat)
     case 'EEG-ERPLAB'
         [DataMat, ChannelMat] = in_data_erplab(DataFile);
     case 'EEG-MUSE-CSV'
-        [DataMat, ChannelMat] = in_data_muse_csv(DataFile);
+        [DataMat, ChannelMat] = in_data_muse_csv(DataFile, [], ImportOptions.DisplayMessages);
     case 'EEG-WS-CSV'
         [DataMat, ChannelMat] = in_data_ws_csv(DataFile);
     case 'EEG-MAT'
@@ -188,17 +190,28 @@ switch (FileFormat)
     case 'EEG-TVB'
         [DataMat, ChannelMat] = in_data_tvb(DataFile);
     case 'FT-TIMELOCK'
-        [DataMat, ChannelMat] = in_data_fieldtrip(DataFile);
+        [DataMat, ChannelMat] = in_data_fieldtrip(DataFile, ImportOptions.DisplayMessages);
         % Check that time is linear
-        if any(abs((DataMat(1).Time(2) - DataMat(1).Time(1)) - diff(DataMat(1).Time)) > 1e-3)
-            error(['The input file has a non-linear time vector.' 10 'This is currently not supported, interpolate your recordings on continuous time vector first.']);
+        if ~isempty(DataMat) && (length(DataMat(1).Time) > 2) && any(abs((DataMat(1).Time(2) - DataMat(1).Time(1)) - diff(DataMat(1).Time)) > 1e-3)
+            error(['The input file has a non-linear time vector.' 10 'This is currently not supported, please interpolate your recordings on continuous time vector first.']);
         end
     case 'NIRS-SNIRF'
         [DataMat, ChannelMat] = in_data_snirf(DataFile);
+    case 'EYE-TOBII-TSV'
+        [DataMat, ChannelMat] = in_data_tobii_tsv(DataFile, ImportOptions.DisplayMessages, []);
     otherwise
         error('Unknown file format');
 end
 
+% Replicate data points if only one
+if ~isempty(DataMat)
+    for i = 1:length(DataMat)
+        if (length(DataMat(i).Time) == 1)
+            DataMat(i).Time = DataMat(i).Time + [0, 0.001];
+            DataMat(i).F = [DataMat(i).F, DataMat(i).F];
+        end
+    end
+end
 % File can only be read in one block (imported data)
 if isempty(sFile) && ~isempty(DataMat)
     sFile = in_fopen_bstmat(DataMat);
@@ -242,7 +255,7 @@ end
 if (nargout >= 4) && ~isempty(DataMat) && isfield(DataMat(1), 'Events')
     for i = 1:length(DataMat)
         if ~isempty(DataMat(i).Events)
-            DataMat.Events = struct_fix_events(DataMat.Events);
+            DataMat(i).Events = struct_fix_events(DataMat(i).Events);
         end
     end
 end

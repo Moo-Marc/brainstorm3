@@ -34,7 +34,7 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.Comment     = 'Segment MRI with FieldTrip (ft_volumesegment)';
     sProcess.Category    = 'Custom';
     sProcess.SubGroup    = {'Import', 'Import anatomy'};
-    sProcess.Index       = 32;
+    sProcess.Index       = 38;
     sProcess.Description = 'http://www.fieldtriptoolbox.org/faq/how_is_the_segmentation_defined';
     % Definition of the input accepted by this process
     sProcess.InputTypes  = {'import', 'data'};
@@ -104,11 +104,7 @@ end
 %% ===== RUN =====
 function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     OutputFiles = [];
-    % Not supported in compiled version
-    if exist('isdeployed', 'builtin') && isdeployed
-        error('Not supported in compiled version yet. Post a message on the forum if you need this feature.');
-    end
-
+    
     % ===== GET OPTIONS =====
     % If data file in input: get the subject from the input
     if strcmpi(sInputs(1).FileType, 'data')
@@ -226,8 +222,12 @@ function [isOk, errMsg, TissueFile] = Compute(iSubject, iMri, OPTIONS)
     ftMri = out_fieldtrip_mri(sMri);
 
     % ===== CALL FIELDTRIP =====
-    % Initialize fieldtrip
-    bst_ft_init();
+    % Initialize FieldTrip
+    [isInstalled, errMsg] = bst_plugin('Install', 'fieldtrip');
+    if ~isInstalled
+        return;
+    end
+    bst_plugin('SetProgressLogo', 'fieldtrip');
     % Replace CSF with BRAIN if white/grey not needed
     if ~any(ismember({'white','gray'}, OPTIONS.layers)) && ismember('csf', OPTIONS.layers)
         OPTIONS.layers{ismember(OPTIONS.layers, {'csf'})} = 'brain';
@@ -381,6 +381,8 @@ function ComputeInteractive(iSubject, iMris) %#ok<DEFNU>
     else
         OPTIONS.nVertices = OPTIONS.nVertices(isSelect);
     end
+    % Remove fieldtrip logo
+    bst_plugin('SetProgressLogo', []);
     % Open progress bar
     bst_progress('start', 'Generate BEM mesh', 'Initialization...');
     % Generate BEM mesh

@@ -68,7 +68,7 @@ subjectSubDir = bst_fileparts(sSubject.FileName);
 
 %% ===== INSTALL ISO2MESH =====
 % Install/load iso2mesh plugin
-[isInstalled, errMsg] = bst_plugin('Install', 'iso2mesh', 1, isInteractive);
+[isInstalled, errMsg] = bst_plugin('Install', 'iso2mesh', isInteractive);
 if ~isInstalled
     error(errMsg);
 end
@@ -103,6 +103,10 @@ for iFile = 1:length(FemFiles)
     FemFile = FemFiles{iFile};
     bst_progress('start', 'Extract surfaces', ['Loading file "' FemFile '"...']);
     FemMat = load(FemFile);
+    % Hexahedral meshes not supported
+    if (size(FemMat.Elements,2) > 4)
+        error('Hexahedral meshes are not supported.');
+    end
 
     % Create one surface per tissue
     Ntissue = max(FemMat.Tissue);

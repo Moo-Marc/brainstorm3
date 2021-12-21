@@ -45,7 +45,7 @@ function [MRI, vox2ras] = in_mri(MriFile, FileFormat, isInteractive, isNormalize
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2020
+% Authors: Francois Tadel, 2008-2021
 
 % Parse inputs
 if (nargin < 4) || isempty(isNormalize)
@@ -85,6 +85,10 @@ if ~iscell(MriFile)
         MriFile = gunzippedFile;
         [filePath, fileBase, fileExt] = bst_fileparts(MriFile);
     end
+    % Default comment
+    Comment = fileBase;
+else
+    Comment = 'MRI';
 end
 
                 
@@ -114,9 +118,9 @@ switch (FileFormat)
         MRI = in_mri_gis(MriFile, ByteOrder);
     case {'Nifti1', 'Analyze'}
         if isInteractive
-            [MRI, vox2ras] = in_mri_nii(MriFile, 1, []); % Function automatically detects right byte order
+            [MRI, vox2ras] = in_mri_nii(MriFile, 1, [], []);
         else
-            [MRI, vox2ras] = in_mri_nii(MriFile, 1, 1); % Function automatically detects right byte order
+            [MRI, vox2ras] = in_mri_nii(MriFile, 1, 1, 0);
         end
     case 'MGH'
         if isInteractive
@@ -146,7 +150,10 @@ end
 if isempty(MRI)
     return
 end
-
+% Default comment: File name
+if ~isfield(MRI, 'Comment') || isempty(MRI.Comment)
+    MRI.Comment = Comment;
+end
 % If a transformation was defined
 if ~isempty(vox2ras)
     % Prepare the history of transformations

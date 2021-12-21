@@ -25,7 +25,7 @@ function varargout = panel_process_select(varargin)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2010-2019
+% Authors: Francois Tadel, 2010-2021
 
 eval(macro_method);
 end
@@ -1096,12 +1096,15 @@ function [bstPanel, panelName] = CreatePanel(sFiles, sFiles2, FileTimeVector)
                     % Build list of frequencies
                     if isempty(TfMat.Freqs)
                         comboList = {'Not available'};
+                        nList = 0;
                     elseif iscell(TfMat.Freqs)
                         comboList = TfMat.Freqs(:,1)';
+                        nList = size(TfMat.Freqs,1);
                     else
                         for ifr = 1:length(TfMat.Freqs)
                             comboList{ifr} = num2str(TfMat.Freqs(ifr));
                         end
+                        nList = length(TfMat.Freqs);
                     end
                     % Label
                     gui_component('label', jPanelOpt, [], ['<HTML>', option.Comment, '&nbsp;&nbsp;']);
@@ -1110,8 +1113,12 @@ function [bstPanel, panelName] = CreatePanel(sFiles, sFiles2, FileTimeVector)
                     jCombo.setEditable(false);
                     jPanelOpt.add(jCombo);
                     % Select previously selected item
-                    if ~isempty(option.Value) && (option.Value <= length(comboList))
+                    if ~isempty(option.Value) && (option.Value <= nList)
                         jCombo.setSelectedIndex(option.Value - 1);
+                    % Otherwise, reset to the first element of the list
+                    else
+                        jCombo.setSelectedIndex(0);
+                        SetOptionValue(iProcess, optNames{iOpt}, 1);
                     end
                     % Set validation callbacks
                     java_setcb(jCombo, 'ActionPerformedCallback', @(h,ev)SetOptionValue(iProcess, optNames{iOpt}, ev.getSource().getSelectedIndex()+1));
@@ -1754,6 +1761,8 @@ function [bstPanel, panelName] = CreatePanel(sFiles, sFiles2, FileTimeVector)
                 % Reload options
                 GlobalData.Processes.Current = SetDefaultOptions(GlobalData.Processes.Current, FileTimeVector, 0);
                 UpdateProcessOptions();
+            else
+                jText.setText(strFiles);
             end
         end
         % Close progress bar
@@ -2477,7 +2486,8 @@ function [bstPanel, panelName] = CreatePanel(sFiles, sFiles2, FileTimeVector)
         str = [str '% Save and display report' 10];
         str = [str 'ReportFile = bst_report(''Save'', sFiles);' 10];
         str = [str 'bst_report(''Open'', ReportFile);' 10];
-        str = [str '% bst_report(''Export'', ReportFile, ExportDir);' 10 10];
+        str = [str '% bst_report(''Export'', ReportFile, ExportDir);' 10];
+        str = [str '% bst_report(''Email'', ReportFile, username, to, subject, isFullReport);' 10 10];
         
         % Save script
         if isSave
@@ -2576,7 +2586,8 @@ function ParseProcessFolder(isForced) %#ok<DEFNU>
     % Get the contents of sub-folder "functions"
     bstList = dir(bst_fullfile(bst_fileparts(mfilename('fullpath')), 'functions', 'process_*.m'));
     bstFunc = {bstList.name};
-    % Get the contents of user's custom processes (~user/.brainstorm/process)
+    
+    % Get the contents of user's custom processes ($HOME/.brainstorm/process)
     usrList = dir(bst_fullfile(bst_get('UserProcessDir'), 'process_*.m'));
     usrFunc = {usrList.name};
     % Display warning for overridden processes
@@ -2584,8 +2595,35 @@ function ParseProcessFolder(isForced) %#ok<DEFNU>
     for i = 1:length(override)
         disp(['BST> ' override{i} ' overridden by user (' bst_get('UserProcessDir') ')']);
     end
-    % Final list of processes
-    bstFunc = union(usrFunc, bstFunc);
+    % Add user processes to list of processes
+    if ~isempty(usrFunc)
+        bstFunc = union(usrFunc, bstFunc);
+    end
+    
+    % Get processes from installed plugins ($HOME/.brainstorm/plugins/*)
+    plugFunc = {};
+    PlugAll = bst_plugin('GetInstalled');
+    for iPlug = 1:length(PlugAll)
+        if ~isempty(PlugAll(iPlug).Processes)
+            % Keep only the processes with function names that are not already defined in Brainstorm
+            iOk = [];
+            for iProc = 1:length(PlugAll(iPlug).Processes)
+                [tmp, procFileName, procExt] = bst_fileparts(PlugAll(iPlug).Processes{iProc});
+                if ~ismember([procFileName, procExt], bstFunc)
+                    iOk = [iOk, iProc];
+                else
+                    % disp(['BST> Plugin ' PlugAll(iPlug).Name ': ' procFileName procExt ' already defined in Brainstorm']);
+                end
+            end
+            % Concatenate plugin path and process function (relative to plugin path)
+            procFullPath = cellfun(@(c)bst_fullfile(PlugAll(iPlug).Path, c), PlugAll(iPlug).Processes(iOk), 'UniformOutput', 0);
+            plugFunc = cat(2, plugFunc, procFullPath);
+        end
+    end
+    % Add plugin processes to list of processes
+    if ~isempty(plugFunc)
+        bstFunc = union(plugFunc, bstFunc);
+    end
 
     % ===== CHECK FOR MODIFICATIONS =====
     % Build a signature for both folders
@@ -2595,6 +2633,9 @@ function ParseProcessFolder(isForced) %#ok<DEFNU>
     end
     for i = 1:length(usrList)
         sig = [sig, usrList(i).name, usrList(i).date, num2str(usrList(i).bytes)];
+    end
+    for i = 1:length(plugFunc)
+        sig = [sig, plugFunc{i}];
     end
     % If signature is same as previously: do not reload all the files
     if ~isForced
@@ -2611,14 +2652,36 @@ function ParseProcessFolder(isForced) %#ok<DEFNU>
     % Returned variable
     defProcess = db_template('ProcessDesc');
     sProcesses = repmat(defProcess, 0);
+    matlabPath = [];
     % Get description for each file
     for iFile = 1:length(bstFunc)
         % Skip python support functions
-        if length(bstFunc{iFile} > 5) && strcmp(bstFunc{iFile}(end-4:end), '_py.m')
+        if (length(bstFunc{iFile}) > 5) && strcmp(bstFunc{iFile}(end-4:end), '_py.m')
             continue;
         end
+        % Split function names: regular process=only function name; plugin process=full path
+        [fPath, fName, fExt] = bst_fileparts(bstFunc{iFile});
+        % Switch folder if needed
+        isChangeDir = 0;
+        if ~isempty(fPath)
+            if ~isdir(fPath)
+                continue;
+            end
+            if isempty(matlabPath)
+                matlabPath = str_split(path, pathsep);
+            end
+            if ~ismember(fPath, matlabPath)
+                curDir = pwd;
+                cd(fPath);
+                isChangeDir = 1;
+            end
+        end
         % Get function handle
-        Function = str2func(strrep(bstFunc{iFile}, '.m', ''));
+        Function = str2func(fName);
+        % Restore previous dir
+        if isChangeDir
+            cd(curDir);
+        end
         % Call description function
         try
             desc = Function('GetDescription');
@@ -2626,10 +2689,6 @@ function ParseProcessFolder(isForced) %#ok<DEFNU>
             disp(['BST> Invalid plug-in function: "' bstFunc{iFile} '"']);
             continue;
         end
-%         % Ignore if Index is set to 0
-%         if (desc.Index == 0)
-%             continue;
-%         end
         % Copy fields to returned structure
         iProc = length(sProcesses) + 1;
         sProcesses(iProc) = defProcess;
@@ -2807,6 +2866,17 @@ function sProcess = GetProcess(ProcessName)
         % Return process if found
         if ~isempty(iProc)
             sProcess = GlobalData.Processes.All(iProc);
+        % Else: try to get its definition directly from the function (for deprecated processes)
+        elseif exist(ProcessName, 'file')
+            % Call description function
+            try
+                Function = str2func(ProcessName);
+                sProcess = Function('GetDescription');
+                sProcess = struct_copy_fields(db_template('processdesc'), sProcess, 1);
+                sProcess.Function = Function;
+            catch
+                sProcess = [];
+            end
         else
             sProcess = [];
         end
@@ -2988,7 +3058,7 @@ end
 function [procTimeVector, nFiles] = GetProcessFileVector(sProcesses, FileTimeVector, nFiles)
     % Default value
     procTimeVector = FileTimeVector;
-    if isempty(sProcesses)
+    if isempty(sProcesses) || (length(procTimeVector) < 2)
         return;
     end
     % Look for an epoching process that changes the time vector of the files

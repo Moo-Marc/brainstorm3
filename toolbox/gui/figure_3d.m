@@ -11,6 +11,7 @@ function varargout = figure_3d( varargin )
 %                 figure_3d('FigureKeyPressedCallback',   hFig, keyEvent)   
 %                 figure_3d('ResetView',                  hFig)
 %                 figure_3d('SetStandardView',            hFig, viewNames)
+%                 figure_3d('SetLocationMri',             hFig, cs, XYZ)
 %                 figure_3d('DisplayFigurePopup',         hFig)
 %                 figure_3d('UpdateSurfaceColor',    hFig, iTess)
 %                 figure_3d('ViewSensors',           hFig, isMarkers, isLabels, isMesh=1, Modality=[])
@@ -39,7 +40,7 @@ function varargout = figure_3d( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2020; Martin Cousineau, 2019
+% Authors: Francois Tadel, 2008-2021; Martin Cousineau, 2019
 
 eval(macro_method);
 end
@@ -310,8 +311,9 @@ function FigureMouseMoveCallback(hFig, varargin)
     % Get axes handle
     hAxes = findobj(hFig, '-depth', 1, 'tag', 'Axes3D');
     % Get current mouse action
-    clickAction = getappdata(hFig, 'clickAction');   
-    clickSource = getappdata(hFig, 'clickSource');   
+    clickAction = getappdata(hFig, 'clickAction');
+    clickSource = getappdata(hFig, 'clickSource');
+    clickObject = getappdata(hFig, 'clickObject');
     % If no action is currently performed
     if isempty(clickAction)
         return
@@ -455,20 +457,33 @@ function FigureMouseMoveCallback(hFig, varargin)
                 % === DETECT ACTION ===
                 % Is moving axis and direction are not detected yet : do it
                 if (~isappdata(hFig, 'moveAxis') || ~isappdata(hFig, 'moveDirection'))
-                    % Guess which cut the user is trying to change
-                    % Sometimes some problem occurs, leading to values > 800
-                    % for a 1-pixel movement => ignoring
+                    moveAxis = [];
+                    % If a slice was clicked: move this one                   
+                    if ~isempty(clickObject) && ~isempty(strfind(get(clickObject, 'Tag'), 'MriCut'))
+                        clickTag = get(clickObject, 'Tag');
+                        if (clickTag(end) == '1')
+                            moveAxis = 1;
+                        elseif (clickTag(end) == '2')
+                            moveAxis = 2;
+                        elseif (clickTag(end) == '3')
+                            moveAxis = 3;
+                        end
+                    end
+                    % Guess which cut the user is trying to change by getting the direction of the move
+                    % Sometimes some problem occurs, leading to values > 800 for a 1-pixel movement => ignoring
                     if (max(motionAxes(1,:)) > 20)
                         return;
                     end
                     % Convert MRI-CS -> SCS
                     motionAxes = motionAxes * sMri.SCS.R;
-                    % Get the maximum deplacement as the direction
-                    [value, moveAxis] = max(abs(motionAxes(1,:)));
-                    moveAxis = moveAxis(1);
+                    % If no slice clieck: Get the maximum deplacement as the direction
+                    if isempty(moveAxis)
+                        [value, moveAxis] = max(abs(motionAxes(1,:)));
+                        moveAxis = moveAxis(1);
+                    end
                     % Get the directions of the mouse deplacement that will
                     % increase or decrease the value of the slice
-                    [value, moveDirection] = max(abs(motionFigure));                   
+                    [value, moveDirection] = max(abs(motionFigure));
                     moveDirection = sign(motionFigure(moveDirection(1))) .* ...
                                     sign(motionAxes(1,moveAxis)) .* ...
                                     moveDirection(1);
@@ -477,7 +492,6 @@ function FigureMouseMoveCallback(hFig, varargin)
                         setappdata(hFig, 'moveAxis',      moveAxis);
                         setappdata(hFig, 'moveDirection', moveDirection);
                     end
-                    
                 % === MOVE SLICE ===
                 else                
                     % Get saved information about current motion
@@ -3232,7 +3246,11 @@ function UpdateSurfaceAlpha(hFig, iTess)
     % ===== HEMISPHERE SELECTION (CHAR) =====
     if ischar(Surface.Resect) && ~strcmpi(Surface.Resect, 'none')
         % Detect hemispheres
-        [rH, lH, isConnected] = tess_hemisplit(sSurf);
+        if strcmpi(Surface.Name, 'FEM')
+            isConnected = 1;
+        else
+            [rH, lH, isConnected] = tess_hemisplit(sSurf);
+        end
         % If there is no separation between  left and right: use the numeric split
         if isConnected
             iHideVert = [];
@@ -4497,6 +4515,29 @@ function JumpMaximum(hFig)
 end
 
 
+%% ===== SET LOCATION MRI =====
+function SetLocationMri(hFig, cs, XYZ)
+    % Get MRI in figure
+    [sMri, TessInfo, iAnatomy] = panel_surface('GetSurfaceMri', hFig);
+    if isempty(sMri) || isempty(TessInfo) || isempty(iAnatomy)
+        return;
+    end
+    % Convert if necessary
+    if ~strcmpi(cs, 'voxel')
+        XYZ = cs_convert(sMri, cs, 'voxel', XYZ);
+    end
+    % Get that values are inside volume bounds
+    XYZ(1) = bst_saturate(XYZ(1), [1, size(sMri.Cube,1)]);
+    XYZ(2) = bst_saturate(XYZ(2), [1, size(sMri.Cube,2)]);
+    XYZ(3) = bst_saturate(XYZ(3), [1, size(sMri.Cube,3)]);
+    % Round coordinates
+    XYZ = round(XYZ);
+    % Set new position
+    TessInfo(iAnatomy).CutsPosition = XYZ;
+    UpdateMriDisplay(hFig, [1 2 3], TessInfo, iAnatomy);
+end
+
+
 %% ===== SELECT FIBER SCOUTS =====
 function hFigFib = SelectFiberScouts(hFigConn, iScouts, Color, ColorOnly)
     global GlobalData;
@@ -4516,6 +4557,13 @@ function hFigFib = SelectFiberScouts(hFigConn, iScouts, Color, ColorOnly)
     iTess = find(ismember({TessInfo.Name}, 'Fibers'));
     [FibMat, iFib] = bst_memory('LoadFibers', TessInfo(iTess).SurfaceFile);
     
+    % Nothing to plot? Only remove existing fibers
+    if isempty(iScouts)
+        delete(TessInfo(iTess).hPatch);
+        TessInfo(iTess).hPatch = [];
+        setappdata(hFigFib, 'Surface', TessInfo);
+        return;
+    end
     
     % If fibers not yet assigned to atlas, do so now
     if isempty(FibMat.Scouts(1).ConnectFile) || ~ismember(TfInfo.FileName, {FibMat.Scouts.ConnectFile})
@@ -4549,7 +4597,9 @@ function hFigFib = SelectFiberScouts(hFigConn, iScouts, Color, ColorOnly)
         % Plot fibers
         [hFigFib, TessInfo(iTess).hPatch] = PlotFibers(hFigFib, FibMat.Points(iFibers,:,:), Color(iFoundScouts,:));
     else
-        TessInfo(iTess).hPatch = ColorFibers(TessInfo(iTess).hPatch, Color(iFoundScouts,:));
+        if ~isempty(TessInfo(iTess).hPatch)
+            TessInfo(iTess).hPatch = ColorFibers(TessInfo(iTess).hPatch, Color(iFoundScouts,:));
+        end
     end
 
     % Update figure's surfaces list and current surface pointer

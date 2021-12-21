@@ -31,7 +31,8 @@ function varargout = bst_process( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2010-2019; Martin Cousineau, 2017
+% Authors: Francois Tadel, 2010-2021
+%          Martin Cousineau, 2017
 
 eval(macro_method);
 end
@@ -761,7 +762,11 @@ function OutputFile = ProcessFilter(sProcess, sInput)
                 end
             end
             % Set time vector in input
-            sInput.TimeVector = sMat.Time(iCol);
+            if isfield(sMat, 'TimeBands') && ~isempty(sMat.TimeBands)
+                sInput.TimeVector = mean(process_tf_bands('GetBounds', sMat.TimeBands), 2);
+            else
+                sInput.TimeVector = sMat.Time(iCol);
+            end
 
             % === PROCESS ===
             % Send indices to the process
@@ -942,14 +947,20 @@ function OutputFile = ProcessFilter(sProcess, sInput)
     % ===== CREATE OUTPUT STRUCTURE =====
     % If there is a DataFile link, and the time definition changed, and results is not static: remove link
     if isfield(sMat, 'DataFile') && ~isempty(sMat.DataFile)
-        if ~isequal(sMat.Time, OutTime) && (length(OutTime) > 2)
+        if isfield(sMat, 'TimeBands') && ~isempty(sMat.TimeBands)
+            % Time bands: Do not update the file links
+        elseif ~isequal(sMat.Time, OutTime) && (length(OutTime) > 2)
             sMat.DataFile = [];
         else
             sMat.DataFile = file_short(sMat.DataFile);
         end
     end
     % Output time vector
-    sMat.Time = OutTime;
+    if isfield(sMat, 'TimeBands') && ~isempty(sMat.TimeBands)
+        % Time bands: Do not update time vector
+    else
+        sMat.Time = OutTime;
+    end
     % Output measure
     if ~isempty(OutMeasure)
         sMat.Measure = OutMeasure;
@@ -1067,10 +1078,10 @@ function OutputFile = ProcessFilter2(sProcess, sInputA, sInputB)
     % ===== LOAD FILES =====
     fileTag = '';
     % Get data matrix
-    [sMatA, matName] = in_bst(sInputA.FileName);
-    [sMatB, matName] = in_bst(sInputB.FileName);
+    [sMatA, matNameA] = in_bst(sInputA.FileName);
+    [sMatB, matNameB] = in_bst(sInputB.FileName);
     % Absolute values of sources / norm or unconstrained sources
-    isAbsolute = strcmpi(matName, 'ImageGridAmp') && (sProcess.isSourceAbsolute >= 1);
+    isAbsolute = strcmpi(matNameA, 'ImageGridAmp') && (sProcess.isSourceAbsolute >= 1);
     if isAbsolute
         % Unconstrained sources: Norm of the three orientations
         if isfield(sMatA, 'nComponents') && (sMatA.nComponents ~= 1) && isfield(sMatB, 'nComponents') && (sMatB.nComponents ~= 1)
@@ -1084,15 +1095,15 @@ function OutputFile = ProcessFilter2(sProcess, sInputA, sInputB)
             sMatB.Comment = [sMatB.Comment, ' | ', strTag];
         end
         % Enforce absolute values
-        sMatA.(matName) = abs(sMatA.(matName));
-        sMatB.(matName) = abs(sMatB.(matName));
+        sMatA.(matNameA) = abs(sMatA.(matNameA));
+        sMatB.(matNameB) = abs(sMatB.(matNameB));
         % Add tags
         fileTag = [fileTag, '_', strTag];
     end  
     
     % Values
-    sInputA.A = sMatA.(matName);
-    sInputB.A = sMatB.(matName);
+    sInputA.A = sMatA.(matNameA);
+    sInputB.A = sMatB.(matNameB);
     % Check size
     if ~isequal(size(sInputA.A), size(sInputB.A)) && ~ismember(func2str(sProcess.Function), {'process_baseline_ab', 'process_zscore_ab', 'process_zscore_dynamic_ab', 'process_baseline_norm2'})
         bst_report('Error', sProcess, [sInputA, sInputB], 'Files in groups A and B do not have the same size.');
@@ -1104,6 +1115,28 @@ function OutputFile = ProcessFilter2(sProcess, sInputA, sInputB)
         bst_report('Error', sProcess, [sInputA, sInputB], 'Files in groups A and B do not have the same measure applied on the time-frequency coefficients.');
         OutputFile = [];
         return;
+    end
+    % Check complex values for time-freq measures (FilesA)
+    if isfield(sMatA, 'Measure')
+        sInputA.Measure = sMatA.Measure;
+        if ~ismember(func2str(sProcess.Function), {'process_matlab_eval2'}) && ~isreal(sMatA.(matNameA))
+            bst_report('Error', sProcess, sInputA, 'Cannot process complex values. A measure have to be applied to this data before (power, magnitude, phase...)');
+            OutputFile = [];
+            return;
+        end
+    else
+        sInputA.Measure = [];
+    end
+    % Check complex values for time-freq measures (FilesB)
+    if isfield(sMatB, 'Measure')
+        sInputB.Measure = sMatB.Measure;
+        if ~ismember(func2str(sProcess.Function), {'process_matlab_eval2'}) && ~isreal(sMatB.(matNameB))
+            bst_report('Error', sProcess, sInputB, 'Cannot process complex values. A measure have to be applied to this data before (power, magnitude, phase...)');
+            OutputFile = [];
+            return;
+        end
+    else
+        sInputB.Measure = [];
     end
     % Do not allow TimeBands
     if ((isfield(sMatA, 'TimeBands') && ~isempty(sMatA.TimeBands)) || (isfield(sMatB, 'TimeBands') && ~isempty(sMatB.TimeBands))) ...
@@ -1178,7 +1211,7 @@ function OutputFile = ProcessFilter2(sProcess, sInputA, sInputB)
 
     % ===== CREATE OUTPUT STRUCTURE =====
     sMatOut = sMatB;
-    sMatOut.(matName) = sOutput.A;
+    sMatOut.(matNameA) = sOutput.A;
     % Comment: forced in the options
     if isfield(sProcess.options, 'Comment') && isfield(sProcess.options.Comment, 'Value') && ~isempty(sProcess.options.Comment.Value)
         sMatOut.Comment = sProcess.options.Comment.Value;
@@ -1748,13 +1781,21 @@ end
 
 
 %% ===== GET NEW FILENAME =====
-function filename = GetNewFilename(fPath, fBase)
+function filename = GetNewFilename(fPath, fBase, isTimestamp)
+    % Parse inputs 
+    if (nargin < 3) || isempty(isTimestamp)
+        isTimestamp = 1;
+    end
     % Folder
     ProtocolInfo = bst_get('ProtocolInfo');
     fPath = strrep(fPath, ProtocolInfo.STUDIES, '');
     % Date and time
-    c = clock;
-    strTime = sprintf('_%02.0f%02.0f%02.0f_%02.0f%02.0f', c(1)-2000, c(2:5));
+    if isTimestamp
+        c = clock;
+        strTime = sprintf('_%02.0f%02.0f%02.0f_%02.0f%02.0f', c(1)-2000, c(2:5));
+    else
+        strTime = '';
+    end
     % Remove extension
     fBase = strrep(fBase, '.mat', '');
     % Full filename
@@ -1779,8 +1820,8 @@ function FileTag = GetFileTag(FileName)
         case {'timefreq', 'ptimefreq'}
             FileTag = FileType;
             listTags = {'_fft', '_psd', '_hilbert', ...
-                        '_connect1_corr', '_connect1_cohere', '_connect1_granger', '_connect1_spgranger', '_connect1_plv', '_connect1_plvt', '_connect1', '_connect1_henv', ...
-                        '_connectn_corr', '_connectn_cohere', '_connectn_granger', '_connectn_spgranger', '_connectn_plv', '_connectn_plvt', '_connectn', '_connectn_henv', ...
+                        '_connect1_corr', '_connect1_cohere', '_connect1_granger', '_connect1_spgranger', '_connect1_plvt', '_connect1_plv', '_connect1_henv', '_connect1', ...
+                        '_connectn_corr', '_connectn_cohere', '_connectn_granger', '_connectn_spgranger', '_connectn_plvt', '_connectn_plv', '_connectn_henv', '_connectn', ...
                         '_pac_fullmaps', '_pac', '_dpac_fullmaps', '_dpac'};
             for i = 1:length(listTags)
                 if ~isempty(strfind(FileName, listTags{i}))
@@ -1852,8 +1893,11 @@ function [sInput, nSignals, iRows] = LoadInputFile(FileName, Target, TimeWindow,
     if ~isempty(Target) && (isstruct(Target) || iscell(Target))
         % Add row name only when extracting all the scouts
         AddRowComment = ~isempty(OPTIONS.TargetFunc) && strcmpi(OPTIONS.TargetFunc, 'all');
-        % Flip sign only for results
-        isflip = ismember(sInput.DataType, {'link','results'});
+        % Flip sign only for results    
+        isflip = ismember(sInput.DataType, {'link','results'}) && ...
+                         isempty(strfind(FileName, '_norm')) && ...
+                         isempty(strfind(FileName, 'NIRS'))  && ...
+                         isempty(strfind(FileName, 'Summed_sensitivities'));
         % Call process
         sMat = CallProcess('process_extract_scout', FileName, [], ...
             'timewindow',     TimeWindow, ...
