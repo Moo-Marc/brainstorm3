@@ -226,76 +226,109 @@ end
 
 %% Add HeadPoints to condition
 function AddHeadPoints_Callback(h, ev)
-    isWarp = 0;
-    % Ask subject if the anatomy will be warped
-    res = java_dialog('question', ...
-        'Do you want to warp the anatomy to these points?', ...
-        'Add Headpoints', [], {'Yes', 'No', 'Cancel'});
-    % User cancelled operation
-    if isempty(res) || strcmpi(res, 'Cancel')
-        return
-    end
-
-    % Warp
-    if strcmpi(res, 'Yes')    
-        isWarp = 1;
-    end
-
     % Get panel controls
     ctrl = bst_get('PanelControls', 'Realtime');
-    % Get condition
-    [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'HeadPoints'));
+    SubjectName = char(ctrl.jTextCurSubject.getText());
+    AddHeadPoints(SubjectName);
+end
     
-    % Copy default channel file to this condition
+function HPChannelFile = AddHeadPoints(SubjectName, PosFile)
+    if nargin < 2 
+        PosFile = [];
+    end
+    % Get subject
+    [sSubject, iSubject] = bst_get('Subject', SubjectName);
+    % Create if subject doesnt exist
+    if isempty(iSubject)
+        [sSubject, iSubject] = db_add_subject(SubjectName, [], 1, 0);
+    end
+    % Ask if the anatomy will be warped
+    res = java_dialog('question', ...
+        'Do you want to warp the default anatomy to subject headpoints?', ...
+        'Add Headpoints', [], {'Yes', 'No', 'Cancel'});
+    if isempty(res) || strcmpi(res, 'Cancel')
+        % User cancelled operation
+        return
+    elseif strcmpi(res, 'Yes')
+        isWarp = 1;
+    else
+        isWarp = 0;
+    end
+    
+    % bst_headtracking was doing this to avoid the confirmation dialog, but this
+    % is not appropriate for realtime with real anatomy where the confirmation
+    % is useful to avoid warping if not needed.
+    %     if isWarp
+    %         % Delete all the tess and anatomy files in the subject that are not default
+    %         for ii = 1:length(sSubject.Anatomy)
+    %             if isempty(strfind(sSubject.Anatomy(ii).FileName, bst_get('DirDefaultSubject')))
+    %                 file_delete(file_fullpath(sSubject.Anatomy(ii).FileName), 1);
+    %             end
+    %         end
+    %         for ii = 1:length(sSubject.Surface)
+    %             if isempty(strfind(sSubject.Surface(ii).FileName, bst_get('DirDefaultSubject')))
+    %                 file_delete(file_fullpath(sSubject.Surface(ii).FileName), 1);
+    %             end
+    %         end
+    %         % Reload subject
+    %         db_reload_subjects(iSubject);
+    %     end
+
+    % Get condition
+    [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(SubjectName, 'HeadPoints'));
+    % Create if condition doesnt exist
+    if isempty(sStudy)
+        iStudy = db_add_condition(SubjectName, 'HeadPoints');
+        sStudy = bst_get('Study', iStudy);
+    end
+    
+    % Copy default channel file to this condition. Sensor locations not used.
     DefChannelFile = bst_fullfile(bst_get('BrainstormHomeDir'), 'defaults', 'meg', 'channel_ctf_default.mat');
     file_copy(DefChannelFile, bst_fileparts(file_fullpath(sStudy.FileName)));
     % Reload condition
     db_reload_studies(iStudy);
     % Get updated study definition
     sStudy = bst_get('Study', iStudy);
-
-    % Get the channel file information
-    ChannelFile = file_fullpath(sStudy.Channel.FileName);
-    ChannelMat = in_bst_channel(ChannelFile);
-    % find existing headpoints and transformation
-    if isempty(ChannelMat.TransfMegLabels) || isempty(ChannelMat.HeadPoints.Loc)
-        % Update the channel file with the head points
+    
+    % Update the channel file with the head points
+    if isempty(PosFile)
         LastUsedDirs = bst_get('LastUsedDirs');
         PosFile = java_getfile( 'open', 'Select POS file...', LastUsedDirs.ImportChannel, 'single', 'files', ...
             {{'*.pos'}, 'POS files', 'POLHEMUS'}, 0);
         if isempty(PosFile)
             return;
         end
-        % Read POS file
-        HeadMat = in_channel_pos(PosFile);
-        % Copy head points
-        ChannelMat.HeadPoints = HeadMat.HeadPoints;
-        % Force re-alignment on the new set of NAS/LPA/RPA (switch from CTF coil-based to SCS anatomical-based coordinate system)
-        ChannelMat = channel_detect_type(ChannelMat, 1, 0);
-        save(ChannelFile, '-struct', 'ChannelMat');
+        % Save default import directory
+        LastUsedDirs.ImportChannel = bst_fileparts(PosFile);
+        bst_set('LastUsedDirs', LastUsedDirs);
     end
+    % Read POS file and channel file
+    HeadMat = in_channel_pos(PosFile);
+    HPChannelFile = file_fullpath(sStudy.Channel.FileName);
+    ChannelMat = in_bst_channel(HPChannelFile);
     
-    % Warp, if required
+    % Copy head points
+    ChannelMat.HeadPoints = HeadMat.HeadPoints;
+    % Force re-alignment on the new set of NAS/LPA/RPA (switch from CTF coil-based to SCS anatomical-based coordinate system)
+    % This is used for head point coordinates only here.
+    % TODO: is it using MRI anat points here for defining SCS
+    ChannelMat = channel_detect_type(ChannelMat, 1, 0);
+    save(HPChannelFile, '-struct', 'ChannelMat');
+        
     if isWarp
-        % Warp surface for new head points
-        % bst_warp_prepare(ChannelFile, Options)
-        %    Options     : Structure of the options
-        %         |- tolerance    : Percentage of outliers head points, ignored in the calulation of the deformation. 
-        %         |                 Set to more than 0 when you know your head points have some outliers.
-        %         |                 If not specified: asked to the user (default 
-        %         |- isInterp     : If 0, do not do a full interpolation (default: 1)
-        %         |- isScaleOnly  : If 1, do not perform the full deformation but only a linear scaling in the three directions (default: 0)
-        %         |- isSurfaceOnly: If 1, do not warp/scale the MRI (default: 0)
-        %         |- isInteractive: If 0, do not ask anything to the user (default: 1)
+        % Warp surface to new head points
         Options.tolerance = 0.02;
         Options.isInterp = [];
         Options.isScaleOnly = 0;
         Options.isSurfaceOnly = 1;
         Options.isInteractive = 1;
-        hFig = bst_warp_prepare(ChannelFile, Options);
+        % This also does the actual warping (not just prepare).
+        hFig = bst_warp_prepare(HPChannelFile, Options);
+        pause(1);
         % Close figure
         close(hFig);
     end
+    
 end
 
 %% Initialize Fieldtrip Buffer
@@ -680,7 +713,7 @@ function HeadPositionRaw = HeadLocalization()
     HPChannelFile = file_fullpath(HeadPointsStudy.Channel.FileName);
     HPChannelMat = in_bst_channel(HPChannelFile);
     % find existing headpoints and transformation
-    iTrans = find(~cellfun(@isempty,strfind(HPChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')));
+    iTrans = find(~cellfun(@isempty,strfind(HPChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')), 1);
     if isempty(iTrans)
         bst_error('No SCS transformation in the channel file')
         return;

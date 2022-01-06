@@ -71,7 +71,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     % Database
     ProtocolName  =          'HeadTracking';
     SubjectName   =          'HeadMaster';
-    ConditionHeadPoints =    'HeadPoints'; % Used to warp the head surface
+    %ConditionHeadPoints =    'HeadPoints'; % Used to warp the head surface, now hardcoded in panel_realtime.
     ConditionChan =          'SensorPositions'; % Used to update sensor locations in real-time
     ConditionRealtimeAlign = 'RealtimeAlign'; % Used for realtime alignment of previous head position
     % Brainstorm
@@ -81,7 +81,6 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
         brainstorm;
     end
     clearvars GlobalData; % from this workspace only
-    bst_dir = bst_get('BrainstormHomeDir');
     
     % Start local real-time buffer (if 'localhost') or connect to remote buffer.
     hdr = panel_realtime('InitFieldtripBuffer', hostIP, hostPort);
@@ -112,140 +111,11 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
         gui_brainstorm('SetCurrentProtocol', iProtocol);
     end
     
-    %% ===== PREPARE SUBJECT =====
-    % Get subject
-    [sSubject, iSubject] = bst_get('Subject', SubjectName);
-    % If warping: we need to recreate the subject
-    isWarp = 0;
-    % Ask subject if the anatomy will be warped
-    res = java_dialog('question', ...
-        'Do you want to warp the anatomy to subject headpoints?', ...
-        'Add Headpoints', [], {'Yes', 'No', 'Cancel'});
-    % User cancelled operation
-    if isempty(res) || strcmpi(res, 'Cancel')
-        return
-    end
-    
-    % Warp
-    if strcmpi(res, 'Yes')
-        isWarp = 1;
-    end
-    
-    % Create if subject doesnt exist
-    if isempty(iSubject)
-        [sSubject, iSubject] = db_add_subject(SubjectName, [], 1, 0);
-    end
-    % Update subject structure
-    sSubject = bst_get('Subject', iSubject);
-    
-    if isWarp
-        % Delete all the tess and anatomy files in the subject that are not
-        % default
-        for ii = 1:length(sSubject.Anatomy)
-            if isempty(strfind(sSubject.Anatomy(ii).FileName, bst_get('DirDefaultSubject')))
-                file_delete(file_fullpath(sSubject.Anatomy(ii).FileName), 1);
-            end
-        end
-        for ii = 1:length(sSubject.Surface)
-            if isempty(strfind(sSubject.Surface(ii).FileName, bst_get('DirDefaultSubject')))
-                file_delete(file_fullpath(sSubject.Surface(ii).FileName), 1);
-            end
-        end
-    end
-    % Reload subject
-    db_reload_subjects(iSubject);
-    % Update subject structure
-    sSubject = bst_get('Subject', iSubject);
-    
-    
-    %% ===== PREPARE CONDITION: HEADPOINTS =====
-    % Get condition
-    [sStudy, iStudy] = bst_get('StudyWithCondition', fullfile(SubjectName, ConditionHeadPoints));
-    % If warping: we need a channel file in HeadPoints condition. This will be
-    % populated with the head points measured and saved in a .pos file
-    if isWarp
-        % Create if condition doesnt exist
-        if isempty(sStudy)
-            iStudy = db_add_condition(SubjectName, ConditionHeadPoints);
-            sStudy = bst_get('Study', iStudy);
-        end
-        
-        % Copy default channel file to this condition. Sensor locations not used.
-        DefChannelFile = bst_fullfile(bst_dir, 'defaults', 'meg', 'channel_ctf_default.mat');
-        file_copy(DefChannelFile, bst_fileparts(file_fullpath(sStudy.FileName)));
-        % Reload condition
-        db_reload_studies(iStudy);
-        
-        % Get updated study definition
-        sStudy = bst_get('Study', iStudy);
-        
-        % Update the channel file with the head points
-        if isempty(PosFile)
-            LastUsedDirs = bst_get('LastUsedDirs');
-            PosFile = java_getfile( 'open', 'Select POS file...', LastUsedDirs.ImportChannel, 'single', 'files', ...
-                {{'*.pos'}, 'POS files', 'POLHEMUS'}, 0);
-            if isempty(PosFile)
-                return;
-            end
-            % Save default import directory
-            LastUsedDirs.ImportChannel = bst_fileparts(PosFile);
-            bst_set('LastUsedDirs', LastUsedDirs);
-        end
-        % Read POS file and channel file
-        HeadMat = in_channel_pos(PosFile);
-        HPChannelFile = file_fullpath(sStudy.Channel.FileName);
-        ChannelMat = in_bst_channel(HPChannelFile);
-        
-        % Copy head points
-        ChannelMat.HeadPoints = HeadMat.HeadPoints;
-        % Force re-alignment on the new set of NAS/LPA/RPA (switch from CTF coil-based to SCS anatomical-based coordinate system)
-        % This is used for head point coordinates only here.
-        % TODO: is it using MRI anat points here for defining SCS
-        ChannelMat = channel_detect_type(ChannelMat, 1, 0);
-        save(HPChannelFile, '-struct', 'ChannelMat');
-        
-    else
-        HPChannelFile = file_fullpath(sStudy.Channel.FileName);
-        ChannelMat = in_bst_channel(HPChannelFile);
-    end
-    
-    % Get the transformation for HPI head coordinates (POS file) to Brainstorm
-    iTrans = find(~cellfun(@isempty,strfind(ChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')));
-    if isempty(iTrans)
-        bst_error('No SCS transformation in the channel file')
-        return;
-    end
-    %ChannelMat.TransfMeg{end+1} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
-    trans = ChannelMat.TransfMeg{iTrans};
-    R = trans(1:3, 1:3);
-    T = trans(1:3, 4); %in meters
-    
-    
-    %% ===== WARP =====
-    if isWarp
-        % Warp surface for new head points
-        % bst_warp_prepare(ChannelFile, Options)
-        %    Options     : Structure of the options
-        %         |- tolerance    : Percentage of outliers head points, ignored in the calulation of the deformation.
-        %         |                 Set to more than 0 when you know your head points have some outliers.
-        %         |                 If not specified: asked to the user (default
-        %         |- isInterp     : If 0, do not do a full interpolation (default: 1)
-        %         |- isScaleOnly  : If 1, do not perform the full deformation but only a linear scaling in the three directions (default: 0)
-        %         |- isSurfaceOnly: If 1, do not warp/scale the MRI (default: 0)
-        %         |- isInteractive: If 0, do not ask anything to the user (default: 1)
-        Options.tolerance = 0.02;
-        Options.isInterp = [];
-        Options.isScaleOnly = 0;
-        Options.isSurfaceOnly = 1;
-        Options.isInteractive = 1;
-        hFig = bst_warp_prepare(HPChannelFile, Options);
-        
-        % Close figure
-        close(hFig);
-        % Update subject structure
-        sSubject = bst_get('Subject', iSubject);
-    end
-    
+    %% ===== PREPARE SUBJECT and CONDITION: HEADPOINTS =====
+
+    HPChannelFile = panel_realtime('AddHeadPoints', SubjectName, PosFile);
+    HPChannelMat = in_bst_channel(HPChannelFile);
+
     
     %% ===== PREPARE CONDITION: CHANNEL POSITIONS =====
     % Get condition
@@ -260,15 +130,29 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     %% ===== READING RES4 INFO =====
     [SensorPositionMat, ChannelTypes] = panel_realtime('ReadBufferRes4', hostIP, hostPort);
     % Add channel file to the SensorPositions study
-    % TODO: cannot do alignment here, no head points!  Is this ok or should we copy head points?
-    SensorPositionFile = db_set_channel(iStudyChan, SensorPositionMat, 2, 2); % ChannelReplace and ChannelAlign without confirmation.
-    iHeadLoc = find(strcmp({SensorPositionMat.Channel.Type}, 'HLU'));
+    % TODO: verify if this header file has dewar coordinates in both sets of
+    % locations. Otherwise, how is it used?  Is it ok that it cannot be aligned?
+    SensorPositionFile = db_set_channel(iStudyChan, SensorPositionMat, 2, 0); % ChannelReplace without confirmation, but no ChannelAlign.
+    isHeadLoc = strcmp({SensorPositionMat.Channel.Type}, 'HLU');
     iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
-    [Unused, iSortHlu] = sort({SensorPositionMat.Channel(iHeadLoc).Name});
+    [Unused, iSortHlu] = sort({SensorPositionMat.Channel(isHeadLoc).Name});
     iBufHeadLoc = iBufHeadLoc(iSortHlu); % Probably not needed.
     
     %% ===== HEAD TRACKING =====
+    %ChannelMat.TransfMeg{end+1} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
+    % Get the transformation for HPI head coordinates (POS file) to Brainstorm
+    iTrans = find(~cellfun(@isempty,strfind(HPChannelMat.TransfMegLabels, 'Native=>Brainstorm/CTF')));
+    if isempty(iTrans)
+        bst_error('No SCS transformation in the channel file')
+        return;
+    end
+    trans = HPChannelMat.TransfMeg{iTrans};
+    R = trans(1:3, 1:3);
+    T = trans(1:3, 4); %in meters
+
     % Display subject's head
+        % Update subject structure
+        sSubject = bst_get('Subject', iSubject);
     hFig = view_surface(sSubject.Surface(sSubject.iScalp).FileName);
     % Set view from the left
     figure_3d('SetStandardView', hFig, 'front');
@@ -369,7 +253,6 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
                 iStudyAlign = db_add_condition(SubjectName, ConditionRealtimeAlign);
             end
             SensorPositionMat.SCS = sMri.SCS; % in mm
-            db_set_channel(iStudyAlign, SensorPositionMat, 2, 0);
             SaveAlignChannelFile(HPChannelFile, iStudyAlign, SensorPositionMat);
         end
         % Wait
