@@ -9,7 +9,7 @@ function varargout = process_segment_brainsuite( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -23,7 +23,7 @@ function varargout = process_segment_brainsuite( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2021
+% Authors: Francois Tadel, 2021-2023
 
 eval(macro_method);
 end
@@ -140,6 +140,18 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive)
         iAnatomy = sSubject.iAnatomy;
     end
     
+    % ===== DELETE EXISTING SURFACES =====
+    % Confirm with user that the existing surfaces will be removed
+    if isInteractive && ~isempty(sSubject.Surface)
+        isDel = java_dialog('confirm', ['Warning: There are already surfaces in this subject.' 10 ...
+            'Running BrainSuite will remove all the existing surfaces.' 10 10 ...
+            'Delete the existing files?' 10 10], 'BrainSuite segmentation');
+        if ~isDel
+            errMsg = 'Process aborted by user.';
+            return;
+        end
+    end
+
     % ===== VERIFY FIDUCIALS IN MRI =====
     % Load MRI file
     T1FileBst = sSubject.Anatomy(iAnatomy).FileName;
@@ -159,17 +171,11 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive)
 
     % ===== SAVE MRI AS NII =====
     bst_progress('text', 'Saving temporary files...');
-    % Empty temporary folder, otherwise it reuses previous files in the folder
-    gui_brainstorm('EmptyTempFolder');
     % Create temporay folder for BrainSuite output
-    procDir = bst_fullfile(bst_get('BrainstormTmpDir'), 'brainsuite');
-    if file_exist(procDir)
-        file_delete(procDir, 1, 3);
-    end
-    mkdir(procDir);
+    TmpDir = bst_get('BrainstormTmpDir', 0, 'brainsuite');
     % Save MRI in .nii format
     subjid = strrep(sSubject.Name, '@', '');
-    NiiFile = bst_fullfile(procDir, [subjid, '.nii']);
+    NiiFile = bst_fullfile(TmpDir, [subjid, '.nii']);
     out_mri_nii(sMri, NiiFile);
     % If a "world transformation" was not available in the MRI in the database, it was set to a default when saving to .nii
     % Let's reload this file to get the transformation matrix, it will be used when importing the results
@@ -197,7 +203,7 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive)
         return    
     end
 
-    % ===== 2. BIAS FIELD CORRECTION (BFC) =====
+    % ===== 2. SVREG =====
     bst_progress('text', '<HTML>2/2: SVREG... &nbsp;&nbsp;&nbsp;<FONT COLOR="#707070"><I>(see command window)</I></FONT>');
     AtlasPath = fullfile(BsDir, 'svreg', 'BrainSuiteAtlas1', 'mri');
     strCall = ['"' svreg_exe '" "' NiiFile(1:end-4) '" "' AtlasPath '"'];
@@ -209,16 +215,23 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive)
         return
     end
 
+    % ===== 3. SKULL EXTRACTION =====
+    % cmd=[skullfinder_exe,' -i ', subbasename,'.nii.gz -o ',subbasename,'.skull.label.nii.gz -m ',subbasename,'.mask.nii.gz --scalplabel ',subbasename,'.scalp.label.nii.gz -s ',subbasename];
+    % '$HOME/BrainSuite21a/bin/skullfinder' -i subject.nii.gz -o subject.skull.label.nii.gz -m subject.mask.nii.gz -s subject
+    % 
+    % Anand 28-Oct-2022: There is a caveat. It seems that due to a bug in the executable, outer skull and scalp surfaces are swapped.
+    % For now, we can write a code that swaps subject.scalp.dfs and subject.outer_skull.dfs
+
     % ===== IMPORT OUTPUT FOLDER =====
     % Import BrainSuite anatomy folder
     isKeepMri = 1;
     isVolumeAtlas = 1;
-    errMsg = import_anatomy_bs(iSubject, procDir, nVertices, isInteractive, [], isVolumeAtlas, isKeepMri);
+    errMsg = import_anatomy_bs(iSubject, TmpDir, nVertices, 0, [], isVolumeAtlas, isKeepMri);
     if ~isempty(errMsg)
         return;
     end
     % Delete temporary folder
-    % file_delete(procDir, 1, 3);
+    file_delete(TmpDir, 1, 1);
     % Return success
     isOk = 1;
 end

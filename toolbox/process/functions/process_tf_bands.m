@@ -11,7 +11,7 @@ function varargout = process_tf_bands( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -253,8 +253,9 @@ function strBands = FormatBands(Bands) %#ok<DEFNU>
 end
 
 %% ===== STRING => BANDS =====
-function Bands = ParseBands(strBands) %#ok<DEFNU>
+function [Bands, errMsg] = ParseBands(strBands) %#ok<DEFNU>
     Bands = {};
+    errMsg = '';
     if isempty(strtrim(strBands))
         return
     end
@@ -265,7 +266,8 @@ function Bands = ParseBands(strBands) %#ok<DEFNU>
         % Split line 
         valBand = str_split(lineBand{iBand}, '/\|');
         if (length(valBand) ~= 3) || any(cellfun(@(c)isempty(strtrim(c)), valBand))
-            disp(['BST> Error: Invalid time or frequency band "' lineBand{iBand} '".']);
+            errMsg = ['Invalid time or frequency band "' lineBand{iBand} '".'];
+            disp(['BST> Error: ' errMsg]);
             Bands = {};
             return;
         end

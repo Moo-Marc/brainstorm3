@@ -1,14 +1,14 @@
-function [sAllAtlas, Messages] = import_label(SurfaceFile, LabelFiles, isNewAtlas, GridLoc)
+function [sAllAtlas, Messages] = import_label(SurfaceFile, LabelFiles, isNewAtlas, GridLoc, FileFormat)
 % IMPORT_LABEL: Import an atlas segmentation for a given surface
 % 
-% USAGE: import_label(SurfaceFile, LabelFiles, isNewAtlas=1, GridLoc=[]) : Add label information to SurfaceFile
-%        import_label(SurfaceFile)                                       : Ask the user for the label file to import
+% USAGE: import_label(SurfaceFile, LabelFiles, isNewAtlas=1, GridLoc=[], FileFormat=[]) : Add label information to SurfaceFile
+%        import_label(SurfaceFile)                                                      : Ask the user for the label file to import
 
 % @=============================================================================
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -22,7 +22,7 @@ function [sAllAtlas, Messages] = import_label(SurfaceFile, LabelFiles, isNewAtla
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2012-2021
+% Authors: Francois Tadel, 2012-2022
 
 import sun.misc.BASE64Decoder;
 
@@ -31,6 +31,9 @@ import sun.misc.BASE64Decoder;
 sAllAtlas = repmat(db_template('Atlas'), 0);
 Messages = [];
 % Parse inputs
+if (nargin < 5) || isempty(FileFormat)
+    FileFormat = [];
+end
 if (nargin < 4) || isempty(GridLoc)
     GridLoc = [];
 end
@@ -63,27 +66,39 @@ if isempty(LabelFiles)
     % Save default export format
     DefaultFormats.LabelIn = FileFormat;
     bst_set('DefaultFormats',  DefaultFormats);
-% CALL: import_label(SurfaceFile, LabelFiles)
+    % Warning if trying to import volume atlases on surfaces
+    if isempty(GridLoc) && ismember(FileFormat, {'MRI-MASK', 'MRI-MASK-MNI', 'MRI-MASK-NOOVERLAP', 'MRI-MASK-NOOVERLAP-MNI'})
+        isConfirm = java_dialog('confirm', ['You are trying to import a volume parcellation on a cortex surface.' 10 ...
+            'This usually results in very poor results, with incomplete cortex parcels.' 10 ...
+            'Using volume parcellations is only recommended with volume source models.' 10 10 ...
+            'Proceed anyways?'], 'Warning');
+        if ~isConfirm
+            return;
+        end
+    end
+% CALL: import_label(SurfaceFile, LabelFiles, ...)
 else
     % Force cell input
     if ~iscell(LabelFiles)
         LabelFiles = {LabelFiles};
     end
     % Detect file format based on file extension
-    [fPath, fBase, fExt] = bst_fileparts(LabelFiles{1});
-    switch (fExt)
-        case '.annot',  FileFormat = 'FS-ANNOT';
-        case '.label',  FileFormat = 'FS-LABEL-SINGLE';
-        case '.gii',    FileFormat = 'GII-TEX';
-        case '.dfs',    FileFormat = 'DFS';
-        case '.dset',   FileFormat = 'DSET';
-        case '.mat'
-            switch (file_gettype(LabelFiles{1}))
-                case 'scout',        FileFormat = 'BST';
-                case 'subjectimage', FileFormat = 'MRI-MASK-NOOVERLAP';
-                otherwise,           Messages = 'Unsupported Brainstorm file type.'; return;
-            end
-        otherwise,  Messages = 'Unknown file extension.'; return;
+    if isempty(FileFormat)
+        [fPath, fBase, fExt] = bst_fileparts(LabelFiles{1});
+        switch (fExt)
+            case '.annot',  FileFormat = 'FS-ANNOT';
+            case '.label',  FileFormat = 'FS-LABEL-SINGLE';
+            case '.gii',    FileFormat = 'GII-TEX';
+            case '.dfs',    FileFormat = 'DFS';
+            case '.dset',   FileFormat = 'DSET';
+            case '.mat'
+                switch (file_gettype(LabelFiles{1}))
+                    case 'scout',        FileFormat = 'BST';
+                    case 'subjectimage', FileFormat = 'MRI-MASK-NOOVERLAP';
+                    otherwise,           Messages = 'Unsupported Brainstorm file type.'; return;
+                end
+            otherwise,  Messages = 'Unknown file extension.'; return;
+        end
     end
 end
 
@@ -256,7 +271,7 @@ for iFile = 1:length(LabelFiles)
                     Color = [1 c 0];
                 end
                 % Create structure
-                sAtlas.Scouts(iScout).Vertices = ScoutVert;
+                sAtlas.Scouts(iScout).Vertices = ScoutVert(:)';
                 sAtlas.Scouts(iScout).Seed     = [];
                 sAtlas.Scouts(iScout).Label    = Label;
                 sAtlas.Scouts(iScout).Color    = Color;
@@ -287,10 +302,14 @@ for iFile = 1:length(LabelFiles)
                 % Atlas name
                 if (length(Values) > 1) && isNewAtlas
                     sAtlas(ia).Name = sprintf('%s #%d', AtlasName, ia);
+                    sAtlas(ia).Scouts = repmat(db_template('scout'), 0);
                 end
                 % Check sizes
                 if (length(Values{ia}) ~= length(Vertices))
-                    Messages = [Messages, sprintf('%s: Numbers of vertices in the surface (%d) and the label file (%d) do not match\n', fBase, length(Vertices), length(Values{ia}))];
+                    Messages = [Messages, sprintf('%s: Entry #%d: Numbers of vertices in the surface (%d) and the label file (%d) do not match\n', fBase, ia, length(Vertices), length(Values{ia}))];
+                    continue;
+                elseif (all(size(Values{ia}) > 1))
+                    Messages = [Messages, sprintf('%s: Entry #%d: Not a list of labels\n', fBase, ia)];
                     continue;
                 end
                 % Round the label values
@@ -310,7 +329,7 @@ for iFile = 1:length(LabelFiles)
                     % New scout index
                     iScout = length(sAtlas(ia).Scouts) + 1;
                     % Get the vertices for this annotation
-                    sAtlas(ia).Scouts(iScout).Vertices = find(Values{ia} == lablist(i));
+                    sAtlas(ia).Scouts(iScout).Vertices = reshape(find(Values{ia} == lablist(i)), 1, []);
                     sAtlas(ia).Scouts(iScout).Seed     = [];
                     sAtlas(ia).Scouts(iScout).Label    = file_unique(scoutLabel, {sAtlas(ia).Scouts.Label});
                     sAtlas(ia).Scouts(iScout).Color    = scoutColor;
@@ -475,20 +494,20 @@ for iFile = 1:length(LabelFiles)
                         % Duplicate scout
                         sAtlas.Scouts(iScout+1) = sAtlas.Scouts(iScout);
                         % Left scout
-                        sAtlas.Scouts(iScout).Vertices = iScoutVert(iL);
+                        sAtlas.Scouts(iScout).Vertices = reshape(iScoutVert(iL), 1, []);
                         sAtlas.Scouts(iScout).Label    = [sAtlas.Scouts(iScout).Label, ' L'];
                         sAtlas.Scouts(iScout).Region   = 'LU';
                         % Right scout
-                        sAtlas.Scouts(iScout+1).Vertices = iScoutVert(iR);
+                        sAtlas.Scouts(iScout+1).Vertices = reshape(iScoutVert(iR), 1, []);
                         sAtlas.Scouts(iScout+1).Label    = [sAtlas.Scouts(iScout+1).Label, ' R'];
                         sAtlas.Scouts(iScout+1).Region   = 'RU';
                     % Do not split
                     else
-                        sAtlas.Scouts(iScout).Vertices = iScoutVert;
+                        sAtlas.Scouts(iScout).Vertices = iScoutVert(:)';
                     end
                 % Importing regular subject volume: Select all the vertices
                 else
-                    sAtlas.Scouts(iScout).Vertices = iScoutVert;
+                    sAtlas.Scouts(iScout).Vertices = iScoutVert(:)';
                 end
             end
             bst_progress('text', 'Saving atlas...');
@@ -523,7 +542,7 @@ for iFile = 1:length(LabelFiles)
             % Copy the new scouts
             for i = 1:length(ScoutMat.Scouts)
                 iScout = length(sAtlas.Scouts) + 1;
-                sAtlas.Scouts(iScout).Vertices = ScoutMat.Scouts(i).Vertices;
+                sAtlas.Scouts(iScout).Vertices = ScoutMat.Scouts(i).Vertices(:)';
                 sAtlas.Scouts(iScout).Seed     = ScoutMat.Scouts(i).Seed;
                 sAtlas.Scouts(iScout).Color    = ScoutMat.Scouts(i).Color;
                 sAtlas.Scouts(iScout).Label    = file_unique(ScoutMat.Scouts(i).Label, {sAtlas.Scouts.Label});
@@ -582,7 +601,7 @@ for iFile = 1:length(LabelFiles)
                 end
                 % New scout index
                 iScout = length(sAtlas.Scouts) + 1;
-                sAtlas.Scouts(iScout).Vertices = find(VertexLabelIds == id);
+                sAtlas.Scouts(iScout).Vertices = reshape(find(VertexLabelIds == id), 1, []);
                 sAtlas.Scouts(iScout).Label    = file_unique(labelInfo.Name, {sAtlas.Scouts.Label});
                 sAtlas.Scouts(iScout).Color    = labelInfo.Color;
                 sAtlas.Scouts(iScout).Function = 'Mean';
@@ -664,7 +683,7 @@ function AtlasName = GetAtlasName(fBase)
             AtlasName = 'Brodmann-thresh';
         case {'lh.aparc.dktatlas40', 'rh.aparc.dktatlas40'}
             AtlasName = 'DKT40';
-        case {'lh.aparc.dktatlas', 'rh.aparc.dktatlas'}
+        case {'lh.aparc.dktatlas', 'rh.aparc.dktatlas', 'lh.aparc.mapped', 'rh.aparc.mapped'}  % FreeSurfer, FastSurfer
             AtlasName = 'DKT';
         case {'lh.pals_b12_brodmann', 'rh.pals_b12_brodmann'}
             AtlasName = 'PALS-B12 Brodmann';
@@ -689,7 +708,7 @@ function AtlasName = GetAtlasName(fBase)
         case {'lh.myaparc_250', 'rh.myaparc_250'}
             AtlasName = 'Lausanne-S250';
         case {'lh.bn_atlas', 'rh.bn_atlas'}
-            AtlasName = 'Braintomme';
+            AtlasName = 'Brainnetome';
         case {'lh.oasis.chubs', 'rh.oasis.chubs'}
             AtlasName = 'OASIS cortical hubs';
         case {'lh.mpm.vpnl', 'rh.mpm.vpnl'}

@@ -7,7 +7,7 @@ function varargout = process_extract_scout( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -21,7 +21,7 @@ function varargout = process_extract_scout( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2010-2021
+% Authors: Francois Tadel, 2010-2022
 
 eval(macro_method);
 end
@@ -167,6 +167,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     end
     
     % ===== LOOP ON THE FILES =====
+    DisplayUnits = [];
     for iInput = 1:length(sInputs)
         ScoutOrient = [];
         SurfOrient  = [];
@@ -178,10 +179,13 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         GridOrient = [];
         iFileScouts = [];
         nComponents = [];
+        fileUnits = [];
         % Progress bar
         if (length(sInputs) > 1)
             bst_progress('text', sprintf('Extracting scouts for file: %d/%d...', iInput, length(sInputs)));
         end
+        % Get data filename
+        [TestResFile, DataFile] = file_resolve_link(sInputs(iInput).FileName);
         
         % === READ FILES ===
         switch (sInputs(iInput).FileType)
@@ -239,10 +243,12 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                 if isfield(sResults, 'GridOrient') && ~isempty(sResults.GridOrient)
                     GridOrient = sResults.GridOrient;
                 end
+                % Get units
+                if isfield(sResults, 'DisplayUnits') && ~isempty(sResults.DisplayUnits)
+                    fileUnits = sResults.DisplayUnits;
+                end
                 % Input filename
-                if isequal(sInputs(iInput).FileName(1:4), 'link')
-                    % Get data filename
-                    [KernelFile, DataFile] = file_resolve_link(sInputs(iInput).FileName);
+                if ~isempty(DataFile)
                     condComment = [file_short(DataFile) '/' sInputs(iInput).Comment];
                 else
                     condComment = sInputs(iInput).FileName;
@@ -255,7 +261,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                     bst_report('Error', sProcess, sInputs(iInput), 'This file does not contain any valid cortical maps.');
                     continue;
                 end
-                % Make sure 
+                % Do not accept complex values
                 if strcmpi(sMat.Measure, 'none')
                     bst_report('Error', sProcess, sInputs(iInput), 'Please apply a measure on these complex values first.');
                     continue;
@@ -296,6 +302,10 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                 if isfield(sMat, 'SurfaceFile') && ~isempty(sMat.SurfaceFile)
                     SurfaceFile = sMat.SurfaceFile;
                 end
+                % Get units
+                if isfield(sResults, 'DisplayUnits') && ~isempty(sResults.DisplayUnits)
+                    fileUnits = sResults.DisplayUnits;
+                end
                 % Input filename
                 condComment = sInputs(iInput).FileName;
                
@@ -320,9 +330,20 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         if ~isfield(sMat, 'History')
             sMat.History = {};
         end
+        % Make sure that units are the same for all the files
+        if ~isempty(fileUnits)
+            if isempty(DisplayUnits)
+                DisplayUnits = fileUnits;
+            elseif ~strcmpi(fileUnits, DisplayUnits)
+                DisplayUnits = 'Mixed units';
+            end
+        end
         % Replicate if no time
         if (length(sMat.Time) == 1)
             sMat.Time = [0,1];
+        elseif isempty(sMat.Time)
+            bst_report('Error', sProcess, sInputs(iInput), 'Invalid time selection.');
+            continue;
         end
         if ~isempty(matValues) && (size(matValues,2) == 1)
             matValues = [matValues, matValues];
@@ -494,6 +515,8 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                 % === GET ROWS INDICES ===
                 % Sort vertices indices
                 iVertices = sort(unique(sScout.Vertices));
+                % Make sure this is a row vector
+                iVertices = iVertices(:)';
                 % Get the number of components per vertex
                 if strcmpi(sInputs(iInput).FileType, 'results')
                     nComponents = sResults.nComponents;
@@ -605,6 +628,8 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                 % === COMPUTE CLUSTER VALUES ===
                 % Process differently the unconstrained sources
                 isUnconstrained = (nComponents ~= 1) && ~strcmpi(XyzFunction, 'norm');
+                % Get meaningful tags in the results file name (without folders)
+                [tmp, TestTags] = bst_fileparts(TestResFile);
                 % If the flip was requested but not a good thing to do on this file
                 wrnMsg = [];
                 if isFlip && isUnconstrained
@@ -613,7 +638,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                 elseif isFlip && strcmpi(sInputs(iInput).FileType, 'timefreq') 
                     wrnMsg = 'Sign flip was not performed: not applicable for time-frequency files.';
                     isFlipScout = 0;
-                elseif isFlip && ~isempty(strfind(sInputs(iInput).FileName, '_abs'))
+                elseif isFlip && ~isempty(strfind(TestTags, '_abs'))
                     wrnMsg = 'Sign flip was not performed: an absolute value was already applied to the source maps.';
                     isFlipScout = 0;
                 else
@@ -728,9 +753,15 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         if ~isempty(SurfaceFile)
             newMat.SurfaceFile = SurfaceFile;
         end
+        % Units
+        newMat.DisplayUnits = DisplayUnits;
         % Save the atlas in the file
         newMat.Atlas = db_template('atlas');
-        newMat.Atlas.Name = 'process_extract_scout';
+        if (size(AtlasList,1) == 1)
+            newMat.Atlas.Name = AtlasList{1,1};
+        else
+            newMat.Atlas.Name = 'process_extract_scout';
+        end
         newMat.Atlas.Scouts = sScoutsFinal;
 
         % === HISTORY ===

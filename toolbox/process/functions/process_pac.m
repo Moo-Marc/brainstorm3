@@ -9,7 +9,7 @@ function varargout = process_pac( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -295,7 +295,7 @@ function OutputFiles = Run(sProcess, sInputA) %#ok<DEFNU>
             if isempty(DirectPAC)
                 DirectPAC = zeros(nSignals, 1, size(DirectPAC_block,3), size(DirectPAC_block,4));
             end
-            % Copy block results to output variable
+            % Copy block results to output variable [nSignals, nTime=1, nNestingFreqs, nNestedFreqs]
             DirectPAC(iSignals,:,:,:) = DirectPAC_block;
             % Display processing time
             % disp(sprintf('Block #%d/%d: %fs', iBlock, nBlocks, toc));

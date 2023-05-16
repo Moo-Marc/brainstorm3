@@ -19,7 +19,7 @@ function [fid, nifti] = out_mri_nii( sMri, OutputFile, typeMatlab, Nt )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -116,7 +116,7 @@ if isfield(sMri, 'Header') && isfield(sMri.Header, 'nifti') && all(isfield(sMri.
 else
     % === QFORM ===
     % XFORM_SCANNER: Scanner-based referential: from the vox2ras matrix
-    if isfield(sMri, 'InitTransf') && ~isempty(sMri.InitTransf) && any(ismember(sMri.InitTransf(:,1), 'vox2ras'))
+    if isfield(sMri, 'InitTransf') && ~isempty(sMri.InitTransf) && ismember('vox2ras', sMri.InitTransf(:,1))
         nifti.qform_code = 1;  % NIFTI_XFORM_SCANNER_ANAT
         % Use directly the unmodified vox2ras from the original file
         iTransf = find(strcmpi(sMri.InitTransf(:,1), 'vox2ras'));

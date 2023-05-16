@@ -10,8 +10,9 @@ function errorMsg = import_anatomy_cat_2020(iSubject, CatDir, nVertices, isInter
 %    - nVertices    : Number of vertices in the file cortex surface
 %    - isInteractive: If 0, no input or user interaction
 %    - sFid         : Structure with the fiducials coordinates
+%                     Or full MRI structure with fiducials defined in the SCS structure, to be registered with the FS MRI
 %    - isExtraMaps  : If 1, create an extra folder "CAT12" to save the thickness maps
-%    - isKeepMri    : 0=Delete all existing anatomy files
+%    - isKeepMri    : 0=Delete all existing anatomy files (when importing a segmentation folder generated without Brainstorm into an empty subject)
 %                     1=Keep existing MRI volumes (when running segmentation from Brainstorm)
 %                     2=Keep existing MRI and surfaces
 %    - isVolumeAtlas: If 1, combine the tissue probability maps (/mri/p*.nii) into a "tissue" volume
@@ -25,7 +26,7 @@ function errorMsg = import_anatomy_cat_2020(iSubject, CatDir, nVertices, isInter
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -39,7 +40,7 @@ function errorMsg = import_anatomy_cat_2020(iSubject, CatDir, nVertices, isInter
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2019-2021
+% Authors: Francois Tadel, 2019-2022
 
 %% ===== PARSE INPUTS =====
 % Import tissues
@@ -147,27 +148,15 @@ if isempty(GiiRcFile)
     errorMsg = [errorMsg 'Surface file was not found: rh.central' 10];
 end
 % Find pial and white surfaces: only if extra maps are requested
-if isExtraMaps
-    GiiLpFile = file_find(CatDir, 'lh.pial.*.gii', 2);
-    GiiRpFile = file_find(CatDir, 'rh.pial.*.gii', 2);
-    GiiCpFile = file_find(CatDir, 'cb.pial.*.gii', 2);
-    GiiLwFile = file_find(CatDir, 'lh.white.*.gii', 2);
-    GiiRwFile = file_find(CatDir, 'rh.white.*.gii', 2);
-    GiiCwFile = file_find(CatDir, 'cb.white.*.gii', 2);
-    GiiLsphFile = file_find(CatDir, 'lh.sphere.reg.*.gii', 2);
-    GiiRsphFile = file_find(CatDir, 'rh.sphere.reg.*.gii', 2);
-    GiiCsphFile = file_find(CatDir, 'cb.sphere.reg.*.gii', 2);
-else
-    GiiLpFile = [];
-    GiiRpFile = [];
-    GiiCpFile = [];
-    GiiLwFile = [];
-    GiiRwFile = [];
-    GiiCwFile = [];
-    GiiLsphFile = [];
-    GiiRsphFile = [];
-    GiiCsphFile = [];
-end
+GiiLpFile = file_find(CatDir, 'lh.pial.*.gii', 2);
+GiiRpFile = file_find(CatDir, 'rh.pial.*.gii', 2);
+GiiCpFile = file_find(CatDir, 'cb.pial.*.gii', 2);
+GiiLwFile = file_find(CatDir, 'lh.white.*.gii', 2);
+GiiRwFile = file_find(CatDir, 'rh.white.*.gii', 2);
+GiiCwFile = file_find(CatDir, 'cb.white.*.gii', 2);
+GiiLsphFile = file_find(CatDir, 'lh.sphere.reg.*.gii', 2);
+GiiRsphFile = file_find(CatDir, 'rh.sphere.reg.*.gii', 2);
+GiiCsphFile = file_find(CatDir, 'cb.sphere.reg.*.gii', 2);
 % Find atlases
 AnnotLhFiles = file_find(CatDir, 'lh.*.annot', 2, 0);
 AnnotRhFiles = file_find(CatDir, 'rh.*.annot', 2, 0);
@@ -228,8 +217,6 @@ if isExtraMaps
     FDLhFile = file_find(CatDir, 'lh.fractaldimension.*', 2);
     FDRhFile = file_find(CatDir, 'rh.fractaldimension.*', 2);
 end
-% Find fiducials definitions
-FidFile = file_find(CatDir, 'fiducials.m');
 % Report errors
 if ~isempty(errorMsg)
     if isInteractive
@@ -240,8 +227,12 @@ end
 
 
 %% ===== IMPORT MRI =====
+% Context: Execution of CAT12 from an MRI already imported in the Brainstorm database
 if isKeepMri && ~isempty(sSubject.Anatomy)
+    % Load the existing MRI
     BstT1File = file_fullpath(sSubject.Anatomy(sSubject.iAnatomy).FileName);
+    sMri = in_mri_bst(BstT1File);
+% Context: CAT12 was executed independently from Brainstorm, now importing the output folder in an empty subject
 else
     bst_progress('text', 'Loading MRI...');
     % Read MRI
@@ -259,80 +250,20 @@ end
 
 
 %% ===== DEFINE FIDUCIALS =====
-% If fiducials file exist: read it
-isComputeMni = 0;
-if ~isempty(FidFile)
-    % Execute script
-    fid = fopen(FidFile, 'rt');
-    FidScript = fread(fid, [1 Inf], '*char');
-    fclose(fid);
-    % Execute script
-    eval(FidScript);    
-    % If not all the fiducials were loaded: ignore the file
-    if ~exist('NAS', 'var') || ~exist('LPA', 'var') || ~exist('RPA', 'var') || isempty(NAS) || isempty(LPA) || isempty(RPA)
-        FidFile = [];
-    end
-    % If the normalized points were not defined: too bad...
-    if ~exist('AC', 'var')
-        AC = [];
-    end
-    if ~exist('PC', 'var')
-        PC = [];
-    end
-    if ~exist('IH', 'var')
-        IH = [];
-    end
-    % NOTE THAT THIS FIDUCIALS FILE CAN CONTAIN A LINE: "isComputeMni = 1;"
-end
-% Random or predefined points
-if ~isInteractive || ~isempty(FidFile)
-    % Use fiducials from file
-    if ~isempty(FidFile)
-        % Already loaded
-    % Compute them from MNI transformation
-    elseif isempty(sFid)
-        NAS = [];
-        LPA = [];
-        RPA = [];
-        AC  = [];
-        PC  = [];
-        IH  = [];
-        isComputeMni = 1;
-        disp(['BST> Import anatomy: Anatomical fiducials were not defined, using standard MNI positions for NAS/LPA/RPA.' 10]);
-    % Else: use the defined ones
-    else
-        NAS = sFid.NAS;
-        LPA = sFid.LPA;
-        RPA = sFid.RPA;
-        AC = sFid.AC;
-        PC = sFid.PC;
-        IH = sFid.IH;
-        % If the NAS/LPA/RPA are defined, but not the others: Compute them
-        if ~isempty(NAS) && ~isempty(LPA) && ~isempty(RPA) && isempty(AC) && isempty(PC) && isempty(IH)
-            isComputeMni = 1;
+% Set fiducials (with linear MNI normalization disabled)
+[isComputeMni, errCall] = process_import_anatomy('SetFiducials', iSubject, CatDir, BstT1File, sFid, isKeepMri, isInteractive, 0);
+% Error handling
+if ~isempty(errCall)
+    errorMsg = [errorMsg, errCall];
+    if isempty(isComputeMni)
+        if isInteractive
+            bst_error(errorMsg, 'Import CAT12 folder', 0);
         end
+        return;
     end
-    if ~isempty(NAS) || ~isempty(LPA) || ~isempty(RPA) || ~isempty(AC) || ~isempty(PC) || ~isempty(IH)
-        figure_mri('SetSubjectFiducials', iSubject, NAS, LPA, RPA, AC, PC, IH);
-    end
-% Define with the MRI Viewer
-elseif ~isKeepMri
-    % MRI Visualization and selection of fiducials (in order to align surfaces/MRI)
-    hFig = view_mri(BstT1File, 'EditFiducials');
-    drawnow;
-    bst_progress('stop');
-    % Wait for the MRI Viewer to be closed
-    waitfor(hFig);
 end
-% Load SCS and NCS field to make sure that all the points were defined
+% Load file again, to get the new fiducials
 sMri = in_mri_bst(BstT1File);
-if ~isComputeMni && (~isfield(sMri, 'SCS') || isempty(sMri.SCS) || isempty(sMri.SCS.NAS) || isempty(sMri.SCS.LPA) || isempty(sMri.SCS.RPA) || isempty(sMri.SCS.R))
-    errorMsg = ['Could not import CAT12 folder: ' 10 10 'Some fiducial points were not defined properly in the MRI.'];
-    if isInteractive
-        bst_error(errorMsg, 'Import CAT12 folder', 0);
-    end
-    return;
-end
 
 
 %% ===== MNI NORMALIZATION =====
@@ -422,21 +353,15 @@ CentralCbLowFile = [];
 rmFiles = {};
 % Merge hemispheres
 if ~isempty(GiiLcFile) && ~isempty(GiiRcFile)
-    % Tag: "cortex" if it is the only surface, "mid" if pial and white are present
-    if ~isempty(GiiLpFile) && ~isempty(GiiRpFile) && ~isempty(GiiLwFile) && ~isempty(GiiRwFile)
-        tagCentral = 'mid';
-    else
-        tagCentral = 'cortex';
-    end
     % Merge left+right+cerebellum
     if ~isempty(GiiCcFile)
-        CentralCbHiFile  = tess_concatenate({TessLcFile,    TessRcFile,    TessCcFile},    sprintf([tagCentral '_cereb_%dV'], nVertOrigLc + nVertOrigRc + nVertOrigCc), 'Cortex');
-        CentralCbLowFile = tess_concatenate({TessLcLowFile, TessRcLowFile, TessCcLowFile}, sprintf([tagCentral '_cereb_%dV'], length(xLcLow) + length(xRcLow) + length(xCcLow)), 'Cortex');
+        CentralCbHiFile  = tess_concatenate({TessLcFile,    TessRcFile,    TessCcFile},    sprintf('central_cereb_%dV', nVertOrigLc + nVertOrigRc + nVertOrigCc), 'Cortex');
+        CentralCbLowFile = tess_concatenate({TessLcLowFile, TessRcLowFile, TessCcLowFile}, sprintf('central_cereb_%dV', length(xLcLow) + length(xRcLow) + length(xCcLow)), 'Cortex');
         rmFiles = cat(2, rmFiles, {TessCcFile, TessCcLowFile});
     end
     % Merge left+right
-    CentralHiFile  = tess_concatenate({TessLcFile,    TessRcFile},    sprintf([tagCentral '_%dV'], nVertOrigLc + nVertOrigRc), 'Cortex');
-    CentralLowFile = tess_concatenate({TessLcLowFile, TessRcLowFile}, sprintf([tagCentral '_%dV'], length(xLcLow) + length(xRcLow)), 'Cortex');
+    CentralHiFile  = tess_concatenate({TessLcFile,    TessRcFile},    sprintf('central_%dV', nVertOrigLc + nVertOrigRc), 'Cortex');
+    CentralLowFile = tess_concatenate({TessLcLowFile, TessRcLowFile}, sprintf('central_%dV', length(xLcLow) + length(xRcLow)), 'Cortex');
     % Delete separate hemispheres
     rmFiles = cat(2, rmFiles, {TessLcFile, TessRcFile, TessLcLowFile, TessRcLowFile});
 end
@@ -593,11 +518,11 @@ if isVolumeAtlas && ~isempty(VolAtlasFiles)
 end
 
 %% ===== IMPORT THICKNESS MAPS =====
-if isExtraMaps && ~isempty(CentralHiFile)
+if isExtraMaps && ~isempty(CentralHiFile) && (iSubject > 0)
     % Create a condition "CAT12"
     iStudy = db_add_condition(iSubject, 'CAT12');
     % Import cortical thickness
-    if ~isempty(ThickLhFile) && ~isempty(ThickLhFile)
+    if ~isempty(ThickLhFile) && ~isempty(ThickRhFile)
         import_sources(iStudy, CentralHiFile, ThickLhFile, ThickRhFile, 'FS', 'thickness');
     end
     % Import gyrification

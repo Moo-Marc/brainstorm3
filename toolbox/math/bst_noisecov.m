@@ -20,7 +20,7 @@ function NoiseCovFiles = bst_noisecov(iTargetStudies, iDataStudies, iDatas, Opti
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -34,7 +34,7 @@ function NoiseCovFiles = bst_noisecov(iTargetStudies, iDataStudies, iDatas, Opti
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2009-2019
+% Authors: Francois Tadel, 2009-2022
 
 %% ===== RETURN DEFAULT OPTIONS =====
 % Options structure
@@ -107,19 +107,33 @@ ChannelTypes = unique({ChannelMat.Channel(iChan).Type});
 
 
 %% ===== READ ALL TIME VECTORS =====
+% Progress bar
+bst_progress('start', 'Read recordings information', 'Analysing input files...', 0, length(DataFiles));
 % Regular list of imported data files
 if ~isRaw
-    % Read all the Time vectors
-    DataMats = in_bst_data_multi(DataFiles);
-    % Check sampling rates
-    SamplingRate = DataMats(1).SamplingRate;
-    % Frequency
-    if any(abs(SamplingRate - [DataMats.SamplingRate]) > 1e-6)
-        error(['The files you selected have different sampling frequencies. They should not be processed together.' 10 ...
-               'Please only select recordings with the same sampling frequency.']);
+    nFiles = length(DataFiles);
+    DataMats = repmat(struct('Time', [], 'SamplingRate', [], 'nAvg', [], 'Leff', [], 'iEpoch', [], 'iBadTime', []), nFiles);
+    % Loop on all input files
+    for iFile = 1:length(DataFiles)
+        % Load file metadata
+        DataMat = in_bst_data(DataFiles{iFile}, 'Time', 'nAvg', 'Leff');
+        % Check file time
+        if (length(DataMat.Time) < 3)
+            error(['File has no time dimension: ' DataFiles{iFile}]);
+        end
+        % Check sampling rate 
+        if (iFile == 1)
+            SamplingRate = DataMat.Time(2) - DataMat.Time(1);
+        elseif (abs(SamplingRate - (DataMat.Time(2) - DataMat.Time(1))) > 1e-6)
+            error(['The files you selected have different sampling frequencies. They should not be processed together.' 10 ...
+                   'Please only select recordings with the same sampling frequency.']);
+        end
+        % Save values
+        DataMats(iFile).Time = DataMat.Time;
+        DataMats(iFile).nAvg = DataMat.nAvg;
+        DataMats(iFile).Leff = DataMat.Leff;
+        bst_progress('inc', 1);
     end
-    DataMats(1).iBadTime = [];
-    nFiles = length(DataMats);
 % Raw file
 else
     % Only one raw file allowed
@@ -180,7 +194,6 @@ else
             end
             if ~isempty(iBadTime)
                 DataMats(iNew).iBadTime = iBadTime;
-                % DataMats(iNew).Time(iBadTime) = [];
             end
         end
     end
@@ -188,6 +201,8 @@ else
 end
 % Get number of samples and sampling rates
 nSamples = length([DataMats.Time]) - length([DataMats.iBadTime]);
+% Close progress bar
+bst_progress('stop');
 % Check number of actual samples available for computation
 if (nSamples == 0)
     error('This selection does not contain any file that can be used for computing the covariance matrix.');
@@ -287,7 +302,7 @@ for iFile = 1:nBlocks
     
     % === Compute covariance ===
     % Remove average
-    DataMat.F(iGoodChan,iTimeBaseline) = bst_bsxfun(@minus, DataMat.F(iGoodChan,iTimeBaseline), Favg(iGoodChan,1));
+    DataMat.F(iGoodChan,:) = bst_bsxfun(@minus, DataMat.F(iGoodChan,:), Favg(iGoodChan,1));
     % Compute covariance for this file
     % fileCov  = DataMat.nAvg .* (DataMat.F(iGoodChan,iTimeCov)    * DataMat.F(iGoodChan,iTimeCov)'   );
     % fileCov2 = DataMat.nAvg .* (DataMat.F(iGoodChan,iTimeCov).^2 * DataMat.F(iGoodChan,iTimeCov)'.^2);
@@ -332,20 +347,34 @@ for i = 1:length(allTypes)
 end
 % Add history entry
 if isDataCov
-    if (max(abs(Options.DataTimeWindow)) > 2)
-        strTime = sprintf('Data=[%1.3f, %1.3f]s, Baseline=[%1.3f, %1.3f]s', Options.DataTimeWindow, Options.Baseline);
+    if isempty(Options.DataTimeWindow)
+        strTime = 'Data=[All file], ';
+    elseif (max(abs(Options.DataTimeWindow)) > 2)
+        strTime = sprintf('Data=[%1.3f, %1.3f]s, ', Options.DataTimeWindow);
     else
-        strTime = sprintf('Data=[%d, %d]ms, Baseline=[%d, %d]ms', round(Options.DataTimeWindow * 1000), round(Options.Baseline * 1000));
+        strTime = sprintf('Data=[%d, %d]ms, ', round(Options.DataTimeWindow * 1000));
+    end
+    if isempty(Options.Baseline)
+        strTime = [strTime, 'Baseline=[All file]'];
+    elseif (max(abs(Options.Baseline)) > 2)
+        strTime = [strTime, sprintf('Baseline=[%1.3f, %1.3f]s', Options.Baseline)];
+    else
+        strTime = [strTime, sprintf('Baseline=[%d, %d]ms', round(Options.Baseline * 1000))];
     end
 else
-    if (max(abs(Options.Baseline)) > 2)
+    if isempty(Options.Baseline)
+        strTime = '[All file]';
+    elseif (max(abs(Options.Baseline)) > 2)
         strTime = sprintf('[%1.3f, %1.3f]s', Options.Baseline);
     else
         strTime = sprintf('[%d, %d]ms', round(Options.Baseline * 1000));
     end
 end
-NoiseCovMat = bst_history('add', NoiseCovMat, 'compute', sprintf('Computed based on %d files (%d blocks, %d samples): %s, %s', ...
-    nFiles, nBlocks, nSamplesTotal, strTime, Options.RemoveDcOffset));
+NoiseCovMat = bst_history('add', NoiseCovMat, 'compute', sprintf('Computed based on %d files (%d blocks, %d samples): %s, %s', nFiles, nBlocks, nSamplesTotal, strTime, Options.RemoveDcOffset));
+% Add list of input files in history
+for iSrc = 1:length(DataFiles)
+    NoiseCovMat = bst_history('add', NoiseCovMat, 'src', DataFiles{iSrc});
+end
 % Save in database
 NoiseCovFiles = import_noisecov(iTargetStudies, NoiseCovMat, Options.ReplaceFile, isDataCov);
 % Close progress bar

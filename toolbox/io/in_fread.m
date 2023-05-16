@@ -21,7 +21,7 @@ function [F, TimeVector,DisplayUnits] = in_fread(sFile, ChannelMat, iEpoch, Samp
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -35,7 +35,9 @@ function [F, TimeVector,DisplayUnits] = in_fread(sFile, ChannelMat, iEpoch, Samp
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2009-2021
+% Authors: Francois Tadel, 2009-2022
+%          Raymundo Cassani, 2022
+
 
 %% ===== PARSE INPUTS =====
 if (nargin < 6)
@@ -113,6 +115,8 @@ switch (sFile.format)
         end
     case 'EEG-AXION'
         F = in_fread_axion(sFile, SamplesBounds, iChannels, precision);
+    case 'EEG-BCI2000'
+        F = in_fread_bci2000(sFile, SamplesBounds);
     case {'EEG-BLACKROCK', 'EEG-RIPPLE'}
         F = in_fread_blackrock(sFile, SamplesBounds, iChannels, precision);
     case 'EEG-BRAINAMP'
@@ -212,11 +216,13 @@ switch (sFile.format)
         end
         F = sFile.header.F(iChannels, iTimes);
         % Load display units
-        DataMat = load(sFile.filename, 'DisplayUnits');
-        if isfield(DataMat, 'DisplayUnits') && ~isempty(DataMat.DisplayUnits)
-            DisplayUnits = DataMat.DisplayUnits;
-        end    
-        
+        if ~isempty(sFile.filename)
+            DataMat = load(sFile.filename, 'DisplayUnits');
+            if isfield(DataMat, 'DisplayUnits') && ~isempty(DataMat.DisplayUnits)
+                DisplayUnits = DataMat.DisplayUnits;
+            end
+        end
+
     case 'EEG-INTAN'
         F = in_fread_intan(sFile, SamplesBounds, iChannels, precision);
     case 'EEG-PLEXON'
@@ -339,6 +345,13 @@ if ~isempty(ImportOptions) && ~isempty(ImportOptions.RemoveBaseline)
             iChanBl = find(~ismember(lower({ChannelMat.Channel.Type}), {'stim','video','sysclock'}));
         else
             iChanBl = 1:size(F,1);
+        end
+        % Sensor selection for the baseline correction
+        if ~isempty(ImportOptions) && isfield(ImportOptions, 'BaselineSensorType') && ~isempty(ImportOptions.BaselineSensorType)
+            % Select channels based on sensor types (or names) for baseline correction
+            iChanBlSensorType = channel_find(ChannelMat.Channel, ImportOptions.BaselineSensorType);
+            % Selected channels minus excluded
+            iChanBl = intersect(iChanBlSensorType, iChanBl);
         end
         % Compute baseline
         blValue = mean(F(iChanBl,iTimesBl), 2);

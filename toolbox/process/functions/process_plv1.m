@@ -5,7 +5,7 @@ function varargout = process_plv1( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -45,11 +45,15 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.freqbands.Comment = 'Frequency bands for the Hilbert transform:';
     sProcess.options.freqbands.Type    = 'groupbands';
     sProcess.options.freqbands.Value   = bst_get('DefaultFreqBands');
+    % === PLV METHOD
+    sProcess.options.plvmethod.Comment = {'<B>PLV</B>: Phase locking value', '<B>ciPLV</B>:  Corrected imaginary phase locking value', '<B>wPLI</B>: Weighted phase lag index'; 'plv', 'ciplv', 'wpli'};
+    sProcess.options.plvmethod.Type    = 'radio_label';
+    sProcess.options.plvmethod.Value   = 'plv';
     % === KEEP TIME
     sProcess.options.keeptime.Comment = 'Keep time information, and estimate the PLV across trials<BR>(requires the average of many trials)';
     sProcess.options.keeptime.Type    = 'checkbox';
     sProcess.options.keeptime.Value   = 0;
-    % === PLV METHOD
+    % === PLV MEASURE
     sProcess.options.plvmeasure.Comment = {'None (complex)', 'Magnitude', 'Measure:'};
     sProcess.options.plvmeasure.Type    = 'radio_line';
     sProcess.options.plvmeasure.Value   = 2;
@@ -63,7 +67,16 @@ end
 
 %% ===== FORMAT COMMENT =====
 function Comment = FormatComment(sProcess) %#ok<DEFNU>
-    Comment = sProcess.Comment;
+    if ~isempty(sProcess.options.plvmethod.Value)
+        iMethod = find(strcmpi(sProcess.options.plvmethod.Comment(2,:), sProcess.options.plvmethod.Value));
+        if ~isempty(iMethod)
+            Comment = str_striptag(sProcess.options.plvmethod.Comment{1,iMethod});
+        else
+            Comment = sProcess.Comment;
+        end
+    else
+        Comment = sProcess.Comment;
+    end
 end
 
 
@@ -75,12 +88,10 @@ function OutputFiles = Run(sProcess, sInputA) %#ok<DEFNU>
         OutputFiles = {};
         return
     end
-
     % Keep time or not: different methods
+    OPTIONS.Method = sProcess.options.plvmethod.Value;
     if sProcess.options.keeptime.Value
-        OPTIONS.Method = 'plvt';
-    else
-        OPTIONS.Method = 'plv';
+        OPTIONS.Method = [OPTIONS.Method 't'];
     end
     % Hilbert and frequency bands options
     OPTIONS.Freqs = sProcess.options.freqbands.Value;

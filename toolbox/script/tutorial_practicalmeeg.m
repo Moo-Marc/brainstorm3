@@ -15,7 +15,7 @@ function tutorial_practicalmeeg(bids_dir, reports_dir)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -280,8 +280,8 @@ bst_report('Snapshot', hFig, sFilesAvg(1).FileName, 'EEG average (2D Layout)', [
 close(hFig);
 % Display EEG056 signals in all conditions
 hFigMeg = view_timeseries(sFilesAvg(1).FileName);
-[Clust, iClust] = panel_cluster('CreateNewCluster', {'EEG065'});
-hFig = view_clusters({sFilesAvg.FileName}, iClust, [], struct('function', 'Mean', 'overlayClusters', 0, 'overlayConditions', 1));
+Clust = panel_cluster('CreateNewCluster', {'EEG065'});
+hFig = view_clusters({sFilesAvg.FileName}, Clust.Label, [], struct('function', 'Mean', 'overlayClusters', 0, 'overlayConditions', 1));
 bst_report('Snapshot', hFig, sFilesAvg(1).FileName, 'EEG065');
 close([hFig, hFigMeg]);
 
@@ -366,7 +366,8 @@ bst_process('CallProcess', 'process_generate_bem', [], [], ...
     'nscalp',      642, ...
     'nouter',      482, ...
     'ninner',      482, ...
-    'thickness',   4);
+    'thickness',   4, ...
+    'method',      'brainstorm');
 % Process: Compute head model (only for the first run of the subject)
 bst_process('CallProcess', 'process_headmodel', sFilesAvg(1), [], ...
     'sourcespace', 1, ...  % Cortex surface

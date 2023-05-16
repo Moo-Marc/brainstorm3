@@ -5,7 +5,7 @@ function varargout = process_ft_sourceanalysis_dics(varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -124,8 +124,6 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     PostStim = sProcess.options.poststim.Value{1};
     FOI      = sProcess.options.foi.Value{1};
     TprFreq  = sProcess.options.tpr.Value{1};
-    % Output folder (for figures and FieldTrip structures)
-    TmpDir = bst_get('BrainstormTmpDir');
     % Progress bar
     bst_progress('start', 'ft_sourceanalysis', 'Loading input files...', 0, 2*length(sInputs));
 
@@ -186,7 +184,6 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     ftData.trial = cell(1,length(sInputs));
     ftData.time = cell(1,length(sInputs));
     % Load all the trials
-    
     AllChannelFiles = unique({sInputs.ChannelFile});
     iChanInputs = find(ismember({sInputs.ChannelFile}, AllChannelFiles{1}));
     for iInput = 1:length(sInputs)
@@ -195,8 +192,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
         ftData.trial{iInput} = DataMat.F(iChannelsData,:);
         ftData.time{iInput} = DataMat.Time;
     end
-    
-    
+
     % ===== FIELDTRIP: ft_freqanalysis =====
     bst_progress('text', 'Calling FieldTrip function: ft_freqanalysis...');
     % Compute tfr-decomposition
@@ -233,11 +229,19 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     cfg = [];
     ep_data.app = ft_appenddata(cfg, ep_data.bsl, ep_data.pst);
     
-    
+    % ===== TEMPORARY FOLDER =====
+    % Output folder (for figures and FieldTrip structures)
+    TmpDir = bst_get('BrainstormTmpDir', 0, 'dics');
+
     % ===== FIELDTRIP: SPECTRAL ANALYSIS =====
     cfg_main = [];
     cfg_main.fmax = MaxFreq;
-    cfg_main.sens = ftData.grad;
+    switch sProcess.options.sensortype.Value{1}
+        case {'EEG', 'SEEG', 'ECOG'}
+            cfg_main.sens = ftData.elec;
+        case {'MEG', 'MEG GRAD', 'MEG MAG'}
+            cfg_main.sens = ftData.grad;
+    end
     cfg_main.outputdir = TmpDir;
     cfg_main.freq_of_interest  = freq_of_interest; % Hz
 
@@ -303,7 +307,6 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                     source_diff_dics = ft_math(cfg, s_data.pst, s_data.bsl);
                     source_diff_dics.pow(isnan(source_diff_dics.pow))=0;
                     source_diff_dics.pow(source_diff_dics.pow>0)=0;
-                    source_diff_dics.pow = abs(source_diff_dics.pow);
                 case 'ers'
                     cfg = [];
                     cfg.parameter = 'pow';
@@ -311,7 +314,6 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                     source_diff_dics = ft_math(cfg, s_data.pst, s_data.bsl);
                     source_diff_dics.pow(isnan(source_diff_dics.pow))=0;
                     source_diff_dics.pow(source_diff_dics.pow<0)=0;
-                    source_diff_dics.pow = abs(source_diff_dics.pow);
                 case 'both'
                     cfg = [];
                     cfg.parameter = 'pow';
@@ -377,7 +379,7 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
                 case 'abs'
                     source_diff_dics.pow = abs((source_diff_dics.pow));
                 case 'raw'
-                    source_diff_dics.pow = abs((source_diff_dics.pow));
+                    source_diff_dics.pow = source_diff_dics.pow;
             end
             ResultsMat.ImageGridAmp  = source_diff_dics.pow;
             ResultsMat.cfg           = source_diff_dics.cfg;
@@ -442,6 +444,8 @@ function OutputFiles = Run(sProcess, sInputs) %#ok<DEFNU>
     % Expand data node
     panel_protocols('SelectNode', [], newResult.FileName);
 
+    % Delete the temporary files
+    file_delete(TmpDir, 1, 1);
     % Save database
     db_save();
     % Hide progress bar

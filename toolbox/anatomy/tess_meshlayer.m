@@ -7,7 +7,7 @@ function [OutputFiles, iSurface] = tess_meshlayer(TissueFile, TissueLabels, nVer
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -111,6 +111,11 @@ for iTissue = 1:length(TissueLabels)
     bst_progress('text', ['Layer #' num2str(iTissue) ': Filling holes...']);
     mask = (mri_fillholes(mask, 1) & mri_fillholes(mask, 2) & mri_fillholes(mask, 3));
     bst_progress('inc', 10);
+    % Error if mask is empty
+    if (nnz(mask) == 0)
+        bst_error(['Layer is empty after eroding: ' TissueLabels{iTissue}], 'Generate mesh', 0);
+        return;
+    end
 
     % view_mri_slices(mask, 'x', 20)
 

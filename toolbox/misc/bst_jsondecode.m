@@ -16,7 +16,7 @@ function [outStruct, replacedFields] = bst_jsondecode(inString, forceBstVersion)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -143,7 +143,7 @@ for iChar = 1:length(inString)
         end
         
         % Ignore all white space outside strings.
-    elseif c == newline
+    elseif c == char(10)
         % Increment line number if we have a line break
         lineNum = lineNum + 1;
         lineChar = 0;
