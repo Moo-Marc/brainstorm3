@@ -94,7 +94,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     RTConfig.FThost = hostIP;
     RTConfig.FTport = hostPort;
     RTConfig.prevSample
-    RTConfig.Timeout = 1000;
+    RTConfig.Timeout = 5000;
     RTConfig.BlockSamples = 300;
     RTConfig.ChunkSamples = panel_realtime('FindAcquisitionBlockSize');
     RTConfig.BlockSamples = ceil(RTConfig.BlockSamples/RTConfig.ChunkSamples) * RTConfig.ChunkSamples;
