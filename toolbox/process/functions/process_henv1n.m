@@ -5,7 +5,7 @@ function varargout = process_henv1n(varargin)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -19,14 +19,14 @@ function varargout = process_henv1n(varargin)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Author: Hossein Shahabi, Francois Tadel, 2020
+% Author: Hossein Shahabi, Francois Tadel, 2020-2022
 eval(macro_method);
 end
 
 %% ===== GET DESCRIPTION =====
 function sProcess = GetDescription() %#ok<DEFNU>
     % === Description the process
-    sProcess.Comment     = 'Envelope Correlation NxN (2020)';
+    sProcess.Comment     = 'Envelope Correlation NxN [2022]';
     sProcess.Category    = 'Custom';
     sProcess.SubGroup    = 'Connectivity';
     sProcess.Index       = 686;
@@ -65,8 +65,11 @@ function sProcess = GetDescription() %#ok<DEFNU>
     sProcess.options.label4.Comment = '<BR><U><B>Connectivity measure</B></U>:';
     sProcess.options.label4.Type    = 'label';
     % === Connectivity measure 
-    sProcess.options.cohmeasure.Comment = {'Coherence', 'Lagged coherence', 'Envelope correlation (no orthogonalization)','Envelope correlation (orthogonalized) '; ...
-                                           'coh', 'lcoh', 'penv', 'oenv'};
+    sProcess.options.cohmeasure.Comment = {'Magnitude coherence: |C|= |Cxy|/sqrt(Cxx*Cyy)', ...
+                                           'Magnitude-squared coherence: |C|^2 = |Cxy|^2/(Cxx*Cyy)', ...
+                                           'Lagged coherence: LC = |imag(C)|/sqrt(1-real(C)^2)', ...
+                                           'Envelope correlation (no orthogonalization)','Envelope correlation (orthogonalized) '; ...
+                                           'coh', 'msc', 'lcoh', 'penv', 'oenv'};
     sProcess.options.cohmeasure.Type    = 'radio_label';
     sProcess.options.cohmeasure.Value   = 'coh';
     % === Time-varying or Average

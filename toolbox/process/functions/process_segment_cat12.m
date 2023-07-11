@@ -9,7 +9,7 @@ function varargout = process_segment_cat12( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -23,7 +23,7 @@ function varargout = process_segment_cat12( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2019-2021
+% Authors: Francois Tadel, 2019-2023
 
 eval(macro_method);
 end
@@ -206,7 +206,7 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive, 
     end
     % Check if a MRI is available for the subject
     if isempty(sSubject.Anatomy)
-        errMsg = ['No MRI available for subject "' SubjectName '".'];
+        errMsg = ['No MRI available for subject "' sSubject.Name '".'];
         return
     end
     % Get default MRI if not specified
@@ -215,22 +215,15 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive, 
     end
 
     % ===== DELETE EXISTING SURFACES =====
-    if ~isempty(sSubject.Surface) || (length(sSubject.Anatomy) >= 2)
-        % Ask user whether the previous anatomy should be removed
-        if isInteractive
-            isDel = java_dialog('confirm', ['Warning: There are already surfaces or atlases in this subject.' 10 10 ...
-                'Delete the existing files?' 10 10], 'CAT12 segmentation');
-        else
-            isDel = 1;
-        end
-        % If user canceled process
+    % Confirm with user that the existing surfaces will be removed
+    if isInteractive && ~isempty(sSubject.Surface)
+        isDel = java_dialog('confirm', ['Warning: There are already surfaces in this subject.' 10 ...
+            'Running CAT12 will remove all the existing surfaces.' 10 10 ...
+            'Delete the existing files?' 10 10], 'CAT12 segmentation');
         if ~isDel
             errMsg = 'Process aborted by user.';
             return;
         end
-        % Delete anatomy
-        isKeepMri = 1;
-        sSubject = db_delete_anatomy(iSubject, isKeepMri);
     end
     
     % ===== VERIFY FIDUCIALS IN MRI =====
@@ -249,17 +242,16 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive, 
                 'Missing fiducials: the surfaces cannot be aligned with the MRI.'];
         end
     end
+    % A vox2ras matrix must be present in the MRI for running CAT12
+    sMri = mri_add_world(T1FileBst, sMri);
 
     % ===== SAVE MRI AS NII =====
     bst_progress('text', 'Saving temporary files...');
-    % Empty temporary folder, otherwise it reuses previous files in the folder
-    gui_brainstorm('EmptyTempFolder');
     % Create temporay folder for CAT12 output
-    catDir = bst_fullfile(bst_get('BrainstormTmpDir'), 'cat12');
-    mkdir(catDir);
+    TmpDir = bst_get('BrainstormTmpDir', 0, 'cat12');
     % Save MRI in .nii format
     subjid = strrep(sSubject.Name, '@', '');
-    NiiFile = bst_fullfile(catDir, [subjid, '.nii']);
+    NiiFile = bst_fullfile(TmpDir, [subjid, '.nii']);
     out_mri_nii(sMri, NiiFile);
     % If a "world transformation" was not available in the MRI in the database, it was set to a default when saving to .nii
     % Let's reload this file to get the transformation matrix, it will be used when importing the results
@@ -352,8 +344,8 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive, 
     elseif ~isSphReg && isCerebellum
         matlabbatch{1}.spm.tools.cat.estwrite.output.surface = 6;   % 6: lh+rh+cerebellum  (fast, no registration, quick review only)
     end
-    % Extract additional surface parameters: Cortical thickness, Gyrification index, Sulcal depth
-    if isExtraMaps
+    % Extract additional surface parameters: Cortical thickness, Gyrification index, Sulcal depth (can't be imported for default anatomy)
+    if isExtraMaps && (iSubject > 0)
         matlabbatch{1}.spm.tools.cat.estwrite.output.surf_measures = 1;  % Thickness maps
         % Separate SPM process (second element in the batch)
         matlabbatch{2}.spm.tools.cat.stools.surfextract.data_surf(1) = cfg_dep('CAT12: Segmentation (current release): Left Central Surface', substruct('.','val', '{}',{1}, '.','val', '{}',{1}, '.','val', '{}',{1}, '.','val', '{}',{1}), substruct('()',{1}, '.','lhcentral', '()',{':'}));
@@ -369,7 +361,7 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive, 
            findall(0, 'Type', 'Figure', 'Tag', 'CAT')]);
 
     % ===== PROJECT ATLASES =====
-    TessLhFile = file_find(catDir, 'lh.central.*.gii', 2);
+    TessLhFile = file_find(TmpDir, 'lh.central.*.gii', 2);
     if exist('cat_surf_map_atlas', 'file') && file_exist(TessLhFile)
         % Get CAT12 dir
         CatDir = bst_fullfile(PlugCat.Path, PlugCat.SubFolder);
@@ -386,12 +378,12 @@ function [isOk, errMsg] = Compute(iSubject, iAnatomy, nVertices, isInteractive, 
     % ===== IMPORT OUTPUT FOLDER =====
     % Import CAT12 anatomy folder
     isKeepMri = 1;
-    errMsg = import_anatomy_cat(iSubject, catDir, nVertices, isInteractive, [], isExtraMaps, isKeepMri);
+    errMsg = import_anatomy_cat(iSubject, TmpDir, nVertices, 0, [], isExtraMaps, isKeepMri);
     if ~isempty(errMsg)
         return;
     end
     % Delete temporary folder
-    % file_delete(catDir, 1, 3);
+    file_delete(TmpDir, 1, 1);
     % Remove logo
     bst_plugin('SetProgressLogo', []);
     % Return success
@@ -427,13 +419,17 @@ function ComputeInteractive(iSubject, iAnatomy) %#ok<DEFNU>
     if isCancel
         return
     end
-    % Ask for cortical maps
-    [isExtraMaps, isCancel] = java_dialog('confirm', ['Compute cortical maps?' 10 10 ...
-        ' - Cortical thickness', 10 ...
-        ' - Gyrification index', 10 ...
-        ' - Sulcal depth', 10 10], 'CAT12 MRI segmentation');
-    if isCancel
-        return
+    % Ask for cortical maps (not for default anatomy)
+    if (iSubject > 0)
+        [isExtraMaps, isCancel] = java_dialog('confirm', ['Compute cortical maps?' 10 10 ...
+            ' - Cortical thickness', 10 ...
+            ' - Gyrification index', 10 ...
+            ' - Sulcal depth', 10 10], 'CAT12 MRI segmentation');
+        if isCancel
+            return
+        end
+    else
+        isExtraMaps = 0;
     end
     % Open progress bar
     bst_progress('start', 'CAT12', 'CAT12 MRI segmentation...');

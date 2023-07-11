@@ -39,7 +39,7 @@ function varargout = bst_figures( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -53,7 +53,7 @@ function varargout = bst_figures( varargin )
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2008-2021
+% Authors: Francois Tadel, 2008-2023
 %          Martin Cousineau, 2017
 
 eval(macro_method);
@@ -85,7 +85,7 @@ function [hFig, iFig, isNewFig] = CreateFigure(iDS, FigureId, CreateMode, Constr
         % If at least one valid figure was found
         if ~isempty(hFigures)
             % Refine selection for certain types of figures
-            if ~isempty(Constrains) && ischar(Constrains) && ismember(FigureId.Type, {'Timefreq', 'Spectrum', 'Connect', 'ConnectViz', 'Pac'}) 
+            if ~isempty(Constrains) && ischar(Constrains) && ismember(FigureId.Type, {'Timefreq', 'Spectrum', 'Connect', 'Pac'}) 
                 for i = 1:length(hFigures)
                     TfInfo = getappdata(hFigures(i), 'Timefreq');
                     if ~isempty(TfInfo) && file_compare(TfInfo.FileName, Constrains)
@@ -186,9 +186,6 @@ function [hFig, iFig, isNewFig] = CreateFigure(iDS, FigureId, CreateMode, Constr
                 FigHandles = db_template('DisplayHandlesTimefreq');
             case 'Connect'
                 hFig = figure_connect('CreateFigure', FigureId);
-                FigHandles = db_template('DisplayHandlesTimefreq');
-            case 'ConnectViz' % new connectivity visualization tool (2021)
-                hFig = figure_connect_viz('CreateFigure', FigureId);
                 FigHandles = db_template('DisplayHandlesTimefreq');
             case 'Image'
                 hFig = figure_image('CreateFigure', FigureId);
@@ -479,8 +476,6 @@ function UpdateFigureName(hFig)
             figureName = [figureNameModality 'PAC: ' figureName];
         case 'Connect'
             figureName = [figureNameModality 'Connect: ' figureName];
-        case 'ConnectViz' % new connectivity visualization tool (2021)
-            figureName = [figureNameModality 'ConnectViz: ' figureName];
         case 'Image'
             % Add dependent file comment
             FileName = getappdata(hFig, 'FileName');
@@ -621,7 +616,7 @@ function [hFigures, iFigures, iDataSets, iSurfaces] = GetFigureWithSurface(Surfa
     % Parse inputs
     if (nargin < 4)
         DataFile = '';
-        FigType  = '3DViz';
+        FigType  = '';
         Modality = '';
     end
     % Process all DataSets
@@ -629,35 +624,40 @@ function [hFigures, iFigures, iDataSets, iSurfaces] = GetFigureWithSurface(Surfa
         % Process all figures of this dataset
         for iFig = 1:length(GlobalData.DataSet(iDS).Figure)
             Figure = GlobalData.DataSet(iDS).Figure(iFig);
-            % Look only in 3DViz figures (there cannot be surfaces displayed in other widow types)
-            % and figures that have the appropriate Modality
-            if strcmpi(Figure.Id.Type, FigType) && (isempty(Modality) || strcmpi(Figure.Id.Modality, Modality))
-                % Get surfaces list
-                TessInfo = getappdata(Figure.hFigure, 'Surface');
-                % Look for surface
-                for iTess = 1:length(TessInfo)
-                    % If the surface contain registered spheres: skip
-                    if ~isempty(TessInfo(iTess).SurfaceFile) && ~isempty(strfind(TessInfo(iTess).SurfaceFile, '|reg'))
-                        isSurfFileOk = 0;
-                    % Check if the (or one of the) surface file is valid
-                    elseif iscell(SurfaceFile)
-                        isSurfFileOk = 0;
-                        i = 1;
-                        while (i <= length(SurfaceFile) && ~isSurfFileOk)
-                            isSurfFileOk = file_compare(TessInfo(iTess).SurfaceFile, SurfaceFile{i});
-                            i = i + 1;
-                        end
-                    else
-                        isSurfFileOk = file_compare(TessInfo(iTess).SurfaceFile, SurfaceFile);
+            % If not specified, look in 3DViz+Topography figures, and figures that have the appropriate Modality
+            if ~isempty(Modality) && ~strcmpi(Figure.Id.Modality, Modality)
+                continue;
+            elseif ~isempty(FigType) && ~strcmpi(Figure.Id.Type, FigType)
+                continue;
+            elseif isempty(FigType) && ~ismember(Figure.Id.Type, {'3DViz', 'Topography'})
+                continue;
+            elseif isempty(FigType) && strcmpi(Figure.Id.Type, 'Topography') && ~strcmpi(Figure.Id.SubType, '3DElectrodes')
+                continue;
+            end
+            % Get surfaces list
+            TessInfo = getappdata(Figure.hFigure, 'Surface');
+            % Look for surface
+            for iTess = 1:length(TessInfo)
+                % If the surface contain registered spheres: skip
+                if ~isempty(TessInfo(iTess).SurfaceFile) && ~isempty(strfind(TessInfo(iTess).SurfaceFile, '|reg'))
+                    isSurfFileOk = 0;
+                % Check if the (or one of the) surface file is valid
+                elseif iscell(SurfaceFile)
+                    isSurfFileOk = 0;
+                    i = 1;
+                    while (i <= length(SurfaceFile) && ~isSurfFileOk)
+                        isSurfFileOk = file_compare(TessInfo(iTess).SurfaceFile, SurfaceFile{i});
+                        i = i + 1;
                     end
-                    % If figure is accepted: add it to the list
-                    if isSurfFileOk && (isempty(DataFile) ...
-                                        || file_compare(TessInfo(iTess).DataSource.FileName, DataFile))
-                        hFigures  = [hFigures,  Figure.hFigure];
-                        iFigures  = [iFigures,  iFig];
-                        iDataSets = [iDataSets, iDS];
-                        iSurfaces = [iSurfaces, iTess];
-                    end
+                else
+                    isSurfFileOk = file_compare(TessInfo(iTess).SurfaceFile, SurfaceFile);
+                end
+                % If figure is accepted: add it to the list
+                if isSurfFileOk && (isempty(DataFile) || file_compare(TessInfo(iTess).DataSource.FileName, DataFile))
+                    hFigures  = [hFigures,  Figure.hFigure];
+                    iFigures  = [iFigures,  iFig];
+                    iDataSets = [iDataSets, iDS];
+                    iSurfaces = [iSurfaces, iTess];
                 end
             end
         end
@@ -895,15 +895,7 @@ function DeleteFigure(hFigure, varargin)
         	panel_dipoles('UpdatePanel');
         end
     end
-    % If figure is an OpenGL connectivty graph: call the destructor
-    if strcmpi(Figure.Id.Type, 'Connect')
-        figure_connect('Dispose', hFigure);
-    end
-    
-    if strcmpi(Figure.Id.Type, 'ConnectViz')
-        figure_connect_viz('Dispose', hFigure);
-    end
-    
+
     % Delete graphic object
     if ishandle(hFigure)
         delete(hFigure);
@@ -978,8 +970,6 @@ function FireCurrentTimeChanged(ForceTime)
                     figure_pac('CurrentTimeChangedCallback', sFig.hFigure);
                 case 'Connect'
                     figure_connect('CurrentTimeChangedCallback', sFig.hFigure);
-                case 'ConnectViz' % new connectivity visualization tool (2021)
-                    figure_connect_viz('CurrentTimeChangedCallback', sFig.hFigure);
                 case 'Image'
                     figure_image('CurrentTimeChangedCallback', sFig.hFigure);
                 case 'Video'
@@ -1027,11 +1017,6 @@ function FireCurrentFreqChanged()
                 case 'Connect'
                     bst_progress('start', 'Connectivity graph', 'Reloading connectivity graph...');
                     figure_connect('CurrentFreqChangedCallback', sFig.hFigure);
-                    bst_progress('stop');
-                    
-                case 'ConnectViz' % new connectivity visualization tool (2021)
-                    bst_progress('start', 'Connectivity-viz graph', 'Reloading connectivity-viz graph...');
-                    figure_connect_viz('CurrentFreqChangedCallback', sFig.hFigure);
                     bst_progress('stop');
                 case 'Image'
                     figure_image('CurrentFreqChangedCallback', sFig.hFigure);
@@ -1093,10 +1078,12 @@ function SetCurrentFigure(hFig, Type)
             panel_record('CurrentFigureChanged_Callback', hFig);
             % Update tab: Display (for raster plots/erpimage)
             panel_display('UpdatePanel', hFig);
-%             FigureId = getappdata(hFig, 'FigureId');
-%             if ~isempty(FigureId) && isequal(FigureId.SubType, 'erpimage')
-%                 panel_display('UpdatePanel', hFig);
-%             end
+            % Update list of clusters
+            if ~isempty(hFig) && ~isequal(oldFigType, hFig)
+                if gui_brainstorm('isTabVisible', 'Cluster')
+                    panel_cluster('CurrentFigureChanged_Callback', hFig);
+                end
+            end
         case 'Type3D'
             % Only when figure changed (within the figure type)
             if ~isempty(hFig) && ~isequal(oldFigType, hFig)
@@ -1113,6 +1100,9 @@ function SetCurrentFigure(hFig, Type)
                 end
                 if gui_brainstorm('isTabVisible', 'iEEG')
                     panel_ieeg('CurrentFigureChanged_Callback', hFig);
+                end
+                if gui_brainstorm('isTabVisible', 'Cluster')
+                    panel_cluster('CurrentFigureChanged_Callback', hFig);
                 end
             end
         case 'TypeTF'
@@ -1583,8 +1573,6 @@ function ViewTopography(hFig, UseSmoothing)
             RecType = '';
         case 'Connect'
             warning('todo');
-        case 'ConnectViz' 
-            warning('todo');
     end
     % Call view data function
     if ~isempty(DataFile) && ~isempty(Modalities)
@@ -1720,7 +1708,7 @@ function isValid = isFigureId(FigureId)
             isfield(FigureId, 'Type') && ...
             isfield(FigureId, 'SubType') && ...
             isfield(FigureId, 'Modality') && ...
-            ismember(FigureId.Type, {'DataTimeSeries', 'ResultsTimeSeries', 'Topography', '3DViz', 'MriViewer', 'Timefreq', 'Spectrum', 'Pac', 'Connect', 'ConnectViz', 'Image'}));
+            ismember(FigureId.Type, {'DataTimeSeries', 'ResultsTimeSeries', 'Topography', '3DViz', 'MriViewer', 'Timefreq', 'Spectrum', 'Pac', 'Connect', 'Image'}))
         isValid = 1;
     else
         isValid = 0;
@@ -1810,9 +1798,9 @@ function ReloadFigures(FigureTypes, isFastUpdate, isResetAxes)
                         % Nothing to do
                     elseif (Figure.Id.Modality(1) == '$')
                         DataFiles = getappdata(Figure.hFigure, 'DataFiles');
-                        iClusters = getappdata(Figure.hFigure, 'iClusters');
-                        if ~isempty(DataFiles) && ~isempty(iClusters)
-                            view_clusters(DataFiles, iClusters, Figure.hFigure);
+                        ClusterLabels = getappdata(Figure.hFigure, 'ClusterLabels');
+                        if ~isempty(DataFiles) && ~isempty(ClusterLabels)
+                            view_clusters(DataFiles, ClusterLabels, Figure.hFigure);
                         end
                     else
                         % Get original XLim/YLim
@@ -1954,10 +1942,6 @@ function ReloadFigures(FigureTypes, isFastUpdate, isResetAxes)
                     bst_progress('start', 'Connectivity graph', 'Reloading connectivity graph...');
                     figure_connect('UpdateFigurePlot', Figure.hFigure);
                     bst_progress('stop');
-                case 'ConnectViz' % new connectivity visualization tool (2021)
-                    bst_progress('start', 'Connectivity-viz graph', 'Reloading connectivity-viz graph...');
-                    figure_connect_viz('UpdateFigurePlot', Figure.hFigure);
-                    bst_progress('stop');
                 case 'Image'
                     % ReloadCall only
                 case 'Video'
@@ -2077,8 +2061,6 @@ function FireSelectedRowChanged()
                 case 'Pac'
                     % Nothing to do
                 case 'Connect'
-                    figure_connect('SelectedRowChangedCallback', iDS, iFig); % empty callback
-                case 'ConnectViz' 
                     % Nothing to do
                 case 'Image'
                     % Nothing to do

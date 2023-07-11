@@ -27,7 +27,7 @@ function TsvFile = export_channel_atlas(ChannelFile, Modality, TsvFile, Radius, 
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -339,6 +339,12 @@ for i = 1:length(iColVol)
                 probLabel = 0;
             end
         else
+            % Exclude contacts outside of the MRI
+            if any(C <= 0) || any(C > size(sMriAtlas.Cube))
+                disp(['BST> Error: Volume atlas ' Columns{iColVol(i), 1} ': Contact "' ChanNames{iChan} '" is outside of the volume.']);
+                continue;
+            end
+            % Get label at the selected coordinates
             intLabel = sMriAtlas.Cube(C(1), C(2), C(3));
             probLabel = 1;
         end

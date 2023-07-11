@@ -1,43 +1,43 @@
 function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
-    % BST_HEADTRACKING: Displays a subject's head position in realtime; used
-    % for quality control before recording MEG.
-    %
-    % USAGE:    bst_headtracking()              Defaults: isRealtimeAlign=0, hostIP='localhost' and hostPort=1972
-    %           bst_headtracking(isRealtimeAlign)
-    %           bst_headtracking(isRealtimeAlign, hostIP, hostPort)
-    %
-    % Inputs:   isRealtimeAlign = [0,1], 1 turns on realtime alignment with saved headposition
-    %           hostIP   = IP address of host computer (e.g. '10.0.0.1', or 'localhost')
-    %               'localhost' will start the real-time buffer from Matlab with the buffer mex file.
-    %               Specifying an IP will instead connect to an already initialized buffer (recommended).
-    %           hostPort = TCP/IP port of host computer (e.g. 1972)
-    %
-    % Starting the Fieldtrip real-time buffer from outside Matlab is highly
-    % recommended, e.g. with the stand-alone demo (buffer.exe on Windows), or on the
-    % acquisition workstation, e.g. with ctf2ft_v3. The buffer mex file is buggy and
-    % Matlab is unable to clear it when used to initialize the buffer.
-    %
-    % @=============================================================================
-    % This function is part of the Brainstorm software:
-    % https://neuroimage.usc.edu/brainstorm
-    %
-    % Copyright (c)2000-2020 University of Southern California & McGill University
-    % This software is distributed under the terms of the GNU General Public License
-    % as published by the Free Software Foundation. Further details on the GPLv3
-    % license can be found at http://www.gnu.org/copyleft/gpl.html.
-    %
-    % FOR RESEARCH PURPOSES ONLY. THE SOFTWARE IS PROVIDED "AS IS," AND THE
-    % UNIVERSITY OF SOUTHERN CALIFORNIA AND ITS COLLABORATORS DO NOT MAKE ANY
-    % WARRANTY, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
-    % MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE, NOR DO THEY ASSUME ANY
-    % LIABILITY OR RESPONSIBILITY FOR THE USE OF THIS SOFTWARE.
-    %
-    % For more information type "brainstorm license" at command prompt.
-    % =============================================================================@
-    %
-    % Authors: Elizabeth Bock & Francois Tadel, 2012-2013, Marc Lalancette 2021
-    
-    % TODO: Merge/use panel_realtime('HeadLocalization')
+% BST_HEADTRACKING: Displays a subject's head position in realtime; used
+% for quality control before recording MEG.
+%
+% USAGE:    bst_headtracking()              Defaults: isRealtimeAlign=0, hostIP='localhost' and hostPort=1972
+%           bst_headtracking(isRealtimeAlign)
+%           bst_headtracking(isRealtimeAlign, hostIP, hostPort)
+%
+% Inputs:   isRealtimeAlign = [0,1], 1 turns on realtime alignment with saved headposition
+%           hostIP   = IP address of host computer (e.g. '10.0.0.1', or 'localhost')
+%               'localhost' will start the real-time buffer from Matlab with the buffer mex file.
+%               Specifying an IP will instead connect to an already initialized buffer (recommended).
+%           hostPort = TCP/IP port of host computer (e.g. 1972)
+%
+% Starting the Fieldtrip real-time buffer from outside Matlab is highly
+% recommended, e.g. with the stand-alone demo (buffer.exe on Windows), or on the
+% acquisition workstation, e.g. with ctf2ft_v3. The buffer mex file is buggy and
+% Matlab is unable to clear it when used to initialize the buffer.
+%
+% @=============================================================================
+% This function is part of the Brainstorm software:
+% https://neuroimage.usc.edu/brainstorm
+%
+% Copyright (c)2000-2020 University of Southern California & McGill University
+% This software is distributed under the terms of the GNU General Public License
+% as published by the Free Software Foundation. Further details on the GPLv3
+% license can be found at http://www.gnu.org/copyleft/gpl.html.
+%
+% FOR RESEARCH PURPOSES ONLY. THE SOFTWARE IS PROVIDED "AS IS," AND THE
+% UNIVERSITY OF SOUTHERN CALIFORNIA AND ITS COLLABORATORS DO NOT MAKE ANY
+% WARRANTY, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF
+% MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE, NOR DO THEY ASSUME ANY
+% LIABILITY OR RESPONSIBILITY FOR THE USE OF THIS SOFTWARE.
+%
+% For more information type "brainstorm license" at command prompt.
+% =============================================================================@
+%
+% Authors: Elizabeth Bock & Francois Tadel, 2012-2013, Marc Lalancette 2021
+
+% TODO: Merge/use panel_realtime('HeadLocalization')
     
     global isSaveAlignChannelFile
     %% ===== DEFAULT INPUTS ====
@@ -93,7 +93,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     RTConfig.FThost = hostIP;
     RTConfig.FTport = hostPort;
     RTConfig.prevSample
-    RTConfig.Timeout = 1000;
+    RTConfig.Timeout = 5000;
     RTConfig.BlockSamples = 300;
     RTConfig.ChunkSamples = panel_realtime('FindAcquisitionBlockSize');
     RTConfig.BlockSamples = ceil(RTConfig.BlockSamples/RTConfig.ChunkSamples) * RTConfig.ChunkSamples;

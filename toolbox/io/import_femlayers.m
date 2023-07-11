@@ -19,7 +19,7 @@ function [iNewSurfaces, OutputFiles] = import_femlayers(iSubject, FemFiles, File
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -133,10 +133,12 @@ for iFile = 1:length(FemFiles)
         % Remove small elements
         [Vertices, Faces] = tess_remove_small(Vertices, Faces);
         
-        % call meshfixe via iso2mesh to remove the inner islandes
+        % Call meshfixe via iso2mesh to remove the inner islandes
         if exist('meshcheckrepair', 'file')
              [Vertices, Faces] = meshcheckrepair(Vertices, Faces, 'meshfix');
         end
+        % Flip triangles order
+        Faces = Faces(:, [1 3 2]);
         
         % ===== NEW STRUCTURE =====
         NewTess = db_template('surfacemat');

@@ -20,7 +20,7 @@ function [iNewFibers, OutputFiles, nFibers] = import_fibers(iSubject, FibersFile
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -35,13 +35,16 @@ function [iNewFibers, OutputFiles, nFibers] = import_fibers(iSubject, FibersFile
 % =============================================================================@
 %
 % Authors: Martin Cousineau, 2019
-%          Francois Tadel, 2021
+%          Francois Tadel, 2021-2022
 
 
 %% ===== PARSE INPUTS =====
 % Check command line
-if ~isnumeric(iSubject) || (iSubject < 0)
-    error('Invalid subject indice.');
+if nargin < 5
+    CS = [];
+end
+if nargin < 4
+    nPoints = [];
 end
 if (nargin < 3) || isempty(FibersFiles)
     FibersFiles = {};
@@ -54,13 +57,13 @@ else
         error('When you pass a FibersFiles argument, FileFormat must be defined too.');
     end
 end
-if nargin < 4
-    nPoints = [];
+if ~isnumeric(iSubject) || (iSubject < 0)
+    error('Invalid subject indice.');
 end
+% Inialize returned values
 iNewFibers = [];
 OutputFiles = {};
 nFibers = [];
-CS = [];
 % Get subject
 sSubject = bst_get('Subject', iSubject);
 

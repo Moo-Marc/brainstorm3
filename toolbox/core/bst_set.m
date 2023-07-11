@@ -43,6 +43,7 @@ function bst_set( varargin )
 %    - bst_set('InterfaceScaling',      InterfaceScaling)
 %    - bst_set('TSDisplayMode',         TSDisplayMode)    : {'butterfly','column'}
 %    - bst_set('ElectrodeConfig',       ElectrodeConfig, Modality)
+%    - bst_set('ElecInterpDist',        ElecInterpDist, Modality)
 %    - bst_set('DefaultFormats'         defaultFormats)
 %    - bst_set('BFSProperties',         [scalpCond,skullCond,brainCond,scalpThick,skullThick])
 %    - bst_set('ImportEegRawOptions',   ImportEegRawOptions)
@@ -90,7 +91,7 @@ function bst_set( varargin )
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -247,11 +248,23 @@ switch contextName
     case 'ElectrodeConfig'
         Modality = varargin{2};
         ElectrodeConf = varargin{3};
-        if ~ismember(Modality, {'EEG','SEEG','ECOG'})
+        if isequal(Modality, 'ECOG+SEEG')
+            Modality = 'ECOG_SEEG';
+        elseif ~ismember(Modality, {'EEG','SEEG','ECOG','MEG'})
             error(['Invalid modality: ' Modality]);
         end
         GlobalData.Preferences.(contextName).(Modality) = ElectrodeConf;
-        
+
+    case 'ElecInterpDist'
+        Modality = varargin{2};
+        ElecInterpDist = varargin{3};
+        if isequal(Modality, 'ECOG+SEEG')
+            Modality = 'ECOG_SEEG';
+        elseif ~ismember(Modality, {'EEG','SEEG','ECOG','MEG'})
+            error(['Invalid modality: ' Modality]);
+        end
+        GlobalData.Preferences.(contextName).(Modality) = ElecInterpDist;
+
     case {'UniformizeTimeSeriesScales', 'XScale', 'YScale', 'FlipYAxis', 'AutoScaleY', 'ShowXGrid', 'ShowYGrid', 'ShowZeroLines', 'ShowEventsMode', ...
           'Resolution', 'AutoUpdates', 'ExpertMode', 'DisplayGFP', 'ForceMatCompression', 'GraphicsSmoothing', 'DownsampleTimeSeries', ...
           'DisableOpenGL', 'InterfaceScaling', 'TSDisplayMode', 'UseSigProcToolbox', 'LastUsedDirs', 'DefaultFormats', ...
@@ -271,12 +284,10 @@ switch contextName
             error('Invalid call to bst_set.');
         end
         [username, apiKey, domain] = varargin{2:4};
-        
+        % Default domain: plot.ly
         if isempty(domain)
-            % Default Plot.ly server
-            domain = 'http://plot.ly';
+            domain = 'https://plot.ly';
         end
-        
         % Plotly needs a URL with HTTP and no trailing slash.
         if strfind(domain, 'https://')
             domain = strrep(domain, 'https://', 'http://');
@@ -286,7 +297,7 @@ switch contextName
         if domain(end) == '/'
             domain = domain(1:end-1);
         end
-        
+        % Save credentials
         saveplotlycredentials(username, apiKey);
         saveplotlyconfig(domain);
         

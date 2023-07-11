@@ -15,7 +15,7 @@ function bst_save(FileName, FileMat, Version, isAppend)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -29,7 +29,7 @@ function bst_save(FileName, FileMat, Version, isAppend)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Francois Tadel, 2013
+% Authors: Francois Tadel, 2013-2023
 
 % Parse inputs
 if (nargin < 4) || isempty(isAppend)
@@ -85,11 +85,6 @@ while ~isStop
         % Display error message
         disp(['BST> Error: Could not write file: ' FileName 10 ...
               'BST> ' errorStr]);
-        % Try deleting the contents in temporary directory
-        isDelTmp = gui_brainstorm('EmptyTempFolder');
-        if (isDelTmp == -1)
-            isStop = 1;
-        end
         % Display error message if possible
         [fPath, fBase, fExt] = bst_fileparts(FileName);
         if bst_get('isGUI') && ismember(fBase, {'brainstorm', 'protocol'})

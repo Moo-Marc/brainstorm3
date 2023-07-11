@@ -14,7 +14,7 @@ function varargout = gui_layout(varargin)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -247,7 +247,7 @@ function ScreenDef = GetScreenClientArea()
         % === SCALING ===
         try
             % Adjust with the OS scaling factor (for high-DPI screens)
-            javaScreenSize = jScreens(i).getDisplayMode().getWidth();
+            javaScreenSize = jScreens(i).getDefaultConfiguration().getBounds().getWidth();
             if (i == 1) || (i > size(MonitorPositions,1))
                 matlabScreenSize = MonitorPositions(1,3) - MonitorPositions(1,1) + 1;
             else
@@ -399,7 +399,6 @@ function Figures = GetFigureGroups(isSkipMriViewer)
                             'fOther',             [], ...
                             'fMriViewer',         [], ...
                             'fConnect',           [], ...
-                            'fConnectViz',       [], ... 
                             'fPac',               [], ...
                             'fImage',             [], ...
                             'fVideo',             [], ...
@@ -472,7 +471,7 @@ function Figures = GetFigureGroups(isSkipMriViewer)
     % => group them so that they can be displayed as a mosaique instead of flat vertical list
     if (length(Figures) > 3) && all([Figures.nFigures] == 1) && ...
             (~isempty(Figures(1).fMriViewer) || ~isempty(Figures(1).fTopography) || ~isempty(Figures(1).f3DViz)    || ~isempty(Figures(1).fResultsTimeSeries) || ...
-             ~isempty(Figures(1).fTimefreq)   || ~isempty(Figures(1).fSpectrum) || ~isempty(Figures(1).fConnect) || ~isempty(Figures(1).fConnectViz) || ~isempty(Figures(1).fPac) || ~isempty(Figures(1).fImage) || ~isempty(Figures(1).fVideo))
+             ~isempty(Figures(1).fTimefreq)   || ~isempty(Figures(1).fSpectrum) || ~isempty(Figures(1).fConnect) || ~isempty(Figures(1).fPac) || ~isempty(Figures(1).fImage) || ~isempty(Figures(1).fVideo))
         uniqueFigures = Figures(1);
         uniqueFigures.fMriViewer         = [Figures.fMriViewer];
         uniqueFigures.fTopography        = [Figures.fTopography];
@@ -483,7 +482,6 @@ function Figures = GetFigureGroups(isSkipMriViewer)
         uniqueFigures.fTimefreq          = [Figures.fTimefreq];
         uniqueFigures.fSpectrum          = [Figures.fSpectrum];
         uniqueFigures.fConnect           = [Figures.fConnect];
-        uniqueFigures.fConnectViz        = [Figures.fConnectViz]; 
         uniqueFigures.fPac               = [Figures.fPac];
         uniqueFigures.fImage             = [Figures.fImage];
         uniqueFigures.fVideo             = [Figures.fVideo];
@@ -547,7 +545,7 @@ function TileWindows(UseWeights)
         % ===== 3DViz, Topography and ResultsTimeSeries figures =====
         OtherFigures = [Figures(iBlock).fDataTimeSeries, Figures(iBlock).fTopography, ...
                         Figures(iBlock).f3DViz, Figures(iBlock).fResultsTimeSeries, ...
-                        Figures(iBlock).fTimefreq, Figures(iBlock).fSpectrum, Figures(iBlock).fConnect, Figures(iBlock).fConnectViz,...
+                        Figures(iBlock).fTimefreq, Figures(iBlock).fSpectrum, Figures(iBlock).fConnect,...
                         Figures(iBlock).fPac, Figures(iBlock).fImage, Figures(iBlock).fVideo, Figures(iBlock).fOther];
         % Add MRI Viewer
         if ~isSkipMriViewer
@@ -662,7 +660,7 @@ function FixedSizeWindows(figArea)
         % Get all the figures
         hAllFig = [Figures(iBlock).fDataTimeSeries, Figures(iBlock).fTopography, ...
                    Figures(iBlock).f3DViz, Figures(iBlock).fResultsTimeSeries, ...
-                   Figures(iBlock).fTimefreq, Figures(iBlock).fSpectrum, Figures(iBlock).fConnect, Figures(iBlock).fConnectViz,Figures(iBlock).fPac, Figures(iBlock).fImage, Figures(iBlock).fVideo, ...
+                   Figures(iBlock).fTimefreq, Figures(iBlock).fSpectrum, Figures(iBlock).fConnect, Figures(iBlock).fPac, Figures(iBlock).fImage, Figures(iBlock).fVideo, ...
                    Figures(iBlock).fOther, Figures(iBlock).fRawViewer, Figures(iBlock).fMriViewer];
         % Set the position
         for iFig = 1:length(hAllFig)
@@ -727,7 +725,7 @@ function ShowAllWindows() %#ok<DEFNU>
     Figures = GetFigureGroups();
     % Set focus to each figure sequentially
     if ~isempty(Figures)
-        fieldNames = {'fDataTimeSeries', 'fRawViewer', 'fTopography', 'f3DViz', 'fResultsTimeSeries', 'fTimefreq', 'fSpectrum', 'fMriViewer', 'fConnect', 'fConnectViz', 'fPac', 'fImage', 'fVideo', 'fOther'};
+        fieldNames = {'fDataTimeSeries', 'fRawViewer', 'fTopography', 'f3DViz', 'fResultsTimeSeries', 'fTimefreq', 'fSpectrum', 'fMriViewer', 'fConnect', 'fPac', 'fImage', 'fVideo', 'fOther'};
         nbBlocks = length(Figures);
         for iBlock = 1:nbBlocks
             for iType = 1:length(fieldNames)
@@ -793,6 +791,7 @@ function CreateNewSetup()
         'FigureId', [], ...
         'AppData',  [], ...
         'Position', [], ...
+        'Color',    [], ...
         'Camera',   []), 0);
     DataFile = [];
     nWarningSkip = 0;
@@ -828,6 +827,7 @@ function CreateNewSetup()
             sSetup.Figures(iSaveFig).FigureId = Figure.Id;
             sSetup.Figures(iSaveFig).AppData  = AppData;
             sSetup.Figures(iSaveFig).Position = get(Figure.hFigure, 'Position');
+            sSetup.Figures(iSaveFig).Color    = get(Figure.hFigure, 'Color');
             % 3D figures: Get camera
             hAxes = findobj(Figure.hFigure, '-depth', 1, 'Tag', 'Axes3D');
             if strcmpi(Figure.Id.Type, '3DViz') && ~isempty(hAxes)
@@ -935,9 +935,11 @@ function LoadSetup(iSetup)
         end
         if isfield(AppData, 'TsInfo') && isfield(AppData.TsInfo, 'FileName') && ~isempty(AppData.TsInfo.FileName)
             AppData.TsInfo.FileName = DataFile;
-        end
-        if isfield(AppData, 'TsInfo') && ~isempty(AppData.TsInfo)
             AppData.TsInfo = struct_copy_fields(AppData.TsInfo, db_template('TsInfo'), 0);
+        end
+        if isfield(AppData, 'TopoInfo') && isfield(AppData.TopoInfo, 'FileName') && ~isempty(AppData.TopoInfo.FileName)
+            AppData.TopoInfo.FileName = DataFile;
+            AppData.TopoInfo = struct_copy_fields(AppData.TopoInfo, db_template('TopoInfo'), 0);
         end
         if isfield(AppData, 'Surface') && ~isempty(AppData.Surface)
             % Save old surfaces
@@ -951,7 +953,12 @@ function LoadSetup(iSetup)
         else
             Surface = [];
         end
-        AppData.DataFile = DataFile;
+        if isfield(AppData, 'StudyFile') && ~isempty(AppData.StudyFile)
+            sStudy = bst_get('AnyFile', DataFile);
+            AppData.StudyFile = sStudy.FileName;
+            sSubject = bst_get('Subject', sStudy.BrainStormSubject);
+            AppData.SubjectFile = sSubject.FileName;
+        end
         % Set AppData
         for field = fieldnames(AppData)'
             setappdata(hFig, field{1}, AppData.(field{1}));
@@ -1031,6 +1038,10 @@ function LoadSetup(iSetup)
                 
             otherwise
                 bst_figures('ReloadFigures', hFig);
+        end
+        % Set background
+        if isfield(sSetup.Figures(i), 'Color') && ~isempty(sSetup.Figures(i).Color)
+            set(hFig, 'Color', sSetup.Figures(i).Color);
         end
     end
     % Close all the figures that haven't been updated

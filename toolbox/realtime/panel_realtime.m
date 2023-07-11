@@ -9,7 +9,7 @@ function varargout = panel_realtime(varargin)
 % This function is part of the Brainstorm software:
 % https://neuroimage.usc.edu/brainstorm
 % 
-% Copyright (c)2000-2020 University of Southern California & McGill University
+% Copyright (c) University of Southern California & McGill University
 % This software is distributed under the terms of the GNU General Public License
 % as published by the Free Software Foundation. Further details on the GPLv3
 % license can be found at http://www.gnu.org/copyleft/gpl.html.
@@ -129,7 +129,7 @@ function SetPreferences(OPTIONS)
     ctrl.jTextMovement.setText(num2str(OPTIONS.HeadMoveThresh));
     ctrl.jTextHighpass.setText(num2str(OPTIONS.HP));
     ctrl.jTextLowpass.setText(num2str(OPTIONS.LP));
-
+    ctrl.jTextFunction.setText(num2str(OPTIONS.FunctionName));
 end
 
 %% Create template
@@ -461,6 +461,7 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     RTConfig.FThost = char(ctrl.jTextFTHost.getText());
     RTConfig.FTport = str2double(char(ctrl.jTextFTPort.getText()));
     Subject = char(ctrl.jTextCurSubject.getText());
+    RTConfig.SubjectName = Subject;
     
     %     % TODO include the path to these files in bst
     %     rtlib_dir = fileparts(which(mfilename));
@@ -481,7 +482,13 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     iHeadLoc = find(strcmp({RealtimeChannelMat.Channel.Type}, 'HLU'));
     [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLoc).Name});
     RTConfig.iHeadLoc = iHeadLoc(iSortHlu); % Probably not needed.
-    iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
+    try
+        iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
+    catch ME
+        global SensorPositionMatGlobal
+        SensorPositionMat = SensorPositionMatGlobal;
+        iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
+    end
     [Unused, iSortHlu] = sort({SensorPositionMat.Channel(iHeadLoc).Name});
     RTConfig.iBufHeadLoc = iBufHeadLoc(iSortHlu); % Probably not needed.
     % We don't apply gains to head loc channels (and following).
@@ -497,6 +504,7 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     RTConfig.ChunkSamples = FindAcquisitionBlockSize(); 
     
     blocktime = str2double(char(ctrl.jTextBlock.getText()))/1000; %ms -> sec
+    RTConfig.blockTimeSecs = blocktime;
     chnktime = RTConfig.ChunkSamples/RTConfig.SampRate;
     RTConfig.nChunks = round(blocktime/chnktime);
     RTConfig.BlockSamples = RTConfig.ChunkSamples * RTConfig.nChunks;
@@ -606,6 +614,8 @@ function [ChannelMat, ChannelTypes, ChannelGains] = SetupRealtimeChannelFile(Sub
     if  isempty(sStudy.Data)
         % Create structure
         dataSt = db_template('datamat');
+        global RTConfig;
+        hdr = buffer('get_hdr', [], RTConfig.FThost, RTConfig.FTport);
         dataSt.F        = 1e-12 .* repmat(rand([hdr.nchans,1]), [1 2]);        % Should be filled when we read the data
         dataSt.Comment  = 'RealTimeData'; % Name of data file
         dataSt.ChannelFlag = ones(hdr.nchans,1);
@@ -914,7 +924,7 @@ function DataMat = GetBufferData(isNextBlock, iChan)
         end
     end
     if isempty(dat)
-        warning('Timeout waiting for next data block.');
+        fprintf('Timeout waiting for next data block.\n');
         DataMat = [];
     elseif ~isempty(iChan)
         % TODO: apply gains and 3rd gradient to MEG channels.
