@@ -604,14 +604,14 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     hdr = buffer('get_hdr', [], ft_host, ft_port);
     
     % Get temporary folder
-    tmp_dir = bst_get('BrainstormTmpDir');
+    TmpDir = bst_get('BrainstormTmpDir', 0, 'Realtime');
     % Write .res4 file
-    res4_file = fullfile(tmp_dir, 'temp.res4');
+    res4_file = fullfile(TmpDir, 'temp.res4');
     fid = fopen(res4_file, 'w', 'l');
     fwrite(fid, hdr.ctf_res4, 'uint8');
     fclose(fid);
     % Write empty .meg4
-    meg4_file = fullfile(tmp_dir, 'temp.meg4');
+    meg4_file = fullfile(TmpDir, 'temp.meg4');
     fid = fopen(meg4_file, 'w', 'l');
     fclose(fid);
     % Reading structured res4
@@ -653,6 +653,8 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     if nargout >= 1
         ChannelGains = ChannelGains(ChannelTypes.iChan)';
     end
+    % Delete temporary folder
+    file_delete(TmpDir, 1, 1);
 end
 
 %% Head localization

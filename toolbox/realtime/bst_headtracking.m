@@ -265,7 +265,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     iHeadLoc = find(strcmp({SensorPositionMat.Channel.Type}, 'HLU'));
     iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
     [Unused, iSortHlu] = sort({SensorPositionMat.Channel(iHeadLoc).Name});
-    iBufHeadLoc = iBufHeadLoc(iSortHlu); % Probably not needed.
+    iBufHeadLoc = iBufHeadLoc(iSortHlu(1:numel(iBufHeadLoc))); % Probably not needed.
     
     %% ===== HEAD TRACKING =====
     % Display subject's head
