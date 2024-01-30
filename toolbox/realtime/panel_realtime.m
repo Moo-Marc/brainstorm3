@@ -471,6 +471,8 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
 
     % ===== Channel info
     [RealtimeChannelMat, ChannelTypes, RTConfig.ChannelGains] = SetupRealtimeChannelFile(Subject, RTConfig.FThost, RTConfig.FTport);
+    % TODO Verify channels match with SensorPositionMat since we're using this
+    % ChannelTypes with both below for HLU
     % noise compensation
     RTConfig.MegRefCoef = RealtimeChannelMat.MegRefCoef;
     % channel indices
@@ -479,18 +481,21 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     RTConfig.iMeg = ChannelTypes.iMeg;
     RTConfig.iMegRef = ChannelTypes.iMegRef;
     % Head localization channels
-    iHeadLoc = find(strcmp({RealtimeChannelMat.Channel.Type}, 'HLU'));
-    [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLoc).Name});
-    RTConfig.iHeadLoc = iHeadLoc(iSortHlu); % Probably not needed.
-    try
-        iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
-    catch ME
-        global SensorPositionMatGlobal
-        SensorPositionMat = SensorPositionMatGlobal;
-        iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
-    end
-    [Unused, iSortHlu] = sort({SensorPositionMat.Channel(iHeadLoc).Name});
-    RTConfig.iBufHeadLoc = iBufHeadLoc(iSortHlu); % Probably not needed.
+    %     iHeadLoc = find(strcmp({RealtimeChannelMat.Channel.Type}, 'HLU'));
+    %     [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLoc).Name});
+    %     RTConfig.iHeadLoc = iHeadLoc(iSortHlu); % Probably not needed.
+    %     if ~exist('SensorPositionMat', 'var')
+    %         % TODO BUG This is not created anywhere
+    %         global SensorPositionMatGlobal
+    %         SensorPositionMat = SensorPositionMatGlobal;
+    %     end
+    % Index in buffer of HLU
+    iBufHeadLoc = find(strcmp({RealtimeChannelMat.Channel(ChannelTypes.iChanInBuf).Type}, 'HLU'));
+    % Index in SensorPositionMat of HLU present in buffer
+    iHeadLocInBuf = ChannelTypes.iChanInBuf(iBufHeadLoc);
+    [Unused, iSortHlu] = sort({RealtimeChannelMat.Channel(iHeadLocInBuf).Name});
+    iBufHeadLoc = iBufHeadLoc(iSortHlu);
+    RTConfig.iBufHeadLoc = iBufHeadLoc(iSortHlu);
     % We don't apply gains to head loc channels (and following).
     RTConfig.ChannelGains(iHeadLoc(1):end) = [];
     
@@ -637,14 +642,14 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     hdr = buffer('get_hdr', [], ft_host, ft_port);
     
     % Get temporary folder
-    tmp_dir = bst_get('BrainstormTmpDir');
+    TmpDir = bst_get('BrainstormTmpDir', 0, 'Realtime');
     % Write .res4 file
-    res4_file = fullfile(tmp_dir, 'temp.res4');
+    res4_file = fullfile(TmpDir, 'temp.res4');
     fid = fopen(res4_file, 'w', 'l');
     fwrite(fid, hdr.ctf_res4, 'uint8');
     fclose(fid);
     % Write empty .meg4
-    meg4_file = fullfile(tmp_dir, 'temp.meg4');
+    meg4_file = fullfile(TmpDir, 'temp.meg4');
     fid = fopen(meg4_file, 'w', 'l');
     fclose(fid);
     % Reading structured res4
@@ -659,19 +664,19 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     % sent to the buffer.  So we need to filter by channel names. But we also
     % need all MEG channels to display the helmet.
     % Channel file indices of channels present in the buffer
-    [Unused, ChannelTypes.iChan] = ismember(hdr.channel_names, {ChannelMat.Channel.Name});
+    [Unused, ChannelTypes.iChanInBuf] = ismember(hdr.channel_names, {ChannelMat.Channel.Name});
     % Channel file indices of all MEG channels 
     ChannelTypes.iMegFull = good_channel(ChannelMat.Channel, [], 'MEG');
     % Channel file indices of MEG channels in the buffer
-    ChannelTypes.iMeg = ChannelTypes.iMegFull(ismember(ChannelTypes.iMegFull, ChannelTypes.iChan));
+    ChannelTypes.iMeg = ChannelTypes.iMegFull(ismember(ChannelTypes.iMegFull, ChannelTypes.iChanInBuf));
     % Channel file indices of MEG REF channels in the buffer
     ChannelTypes.iMegRef = good_channel(ChannelMat.Channel, [], 'MEG REF');
     % Full MegRefCoef matrix indices for MEG channels in the buffer
     [Unused, iMegCoefs] = ismember(ChannelTypes.iMeg, ChannelTypes.iMegFull);
     % Buffer indices for MEG channels
-    ChannelTypes.iBufMeg = good_channel(ChannelMat.Channel(ChannelTypes.iChan), [], 'MEG');
+    ChannelTypes.iBufMeg = good_channel(ChannelMat.Channel(ChannelTypes.iChanInBuf), [], 'MEG');
     % Buffer indices for MEG REF channels
-    iBufMegRef = good_channel(ChannelMat.Channel(ChannelTypes.iChan), [], 'MEG REF');
+    iBufMegRef = good_channel(ChannelMat.Channel(ChannelTypes.iChanInBuf), [], 'MEG REF');
     nMegRef = numel(iBufMegRef);
     % For MEG channels, we need all references.
     if ~isempty(ChannelTypes.iMeg) 
@@ -684,8 +689,10 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
         ChannelMat.MegRefCoef = [];
     end
     if nargout >= 1
-        ChannelGains = ChannelGains(ChannelTypes.iChan)';
+        ChannelGains = ChannelGains(ChannelTypes.iChanInBuf)';
     end
+    % Delete temporary folder
+    file_delete(TmpDir, 1, 1);
 end
 
 %% Head localization

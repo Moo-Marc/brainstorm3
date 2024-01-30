@@ -129,14 +129,18 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     
     %% ===== READING RES4 INFO =====
     [SensorPositionMat, ChannelTypes] = panel_realtime('ReadBufferRes4', hostIP, hostPort);
+    % SensorPositionMat is the channel structure of what is being recorded,
+    % which may differ from channels present in the buffer. 
     % Add channel file to the SensorPositions study
     % TODO: verify if this header file has dewar coordinates in both sets of
     % locations. Otherwise, how is it used?  Is it ok that it cannot be aligned?
     SensorPositionFile = db_set_channel(iStudyChan, SensorPositionMat, 2, 0); % ChannelReplace without confirmation, but no ChannelAlign.
-    isHeadLoc = strcmp({SensorPositionMat.Channel.Type}, 'HLU');
-    iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChan).Type}, 'HLU'));
-    [Unused, iSortHlu] = sort({SensorPositionMat.Channel(isHeadLoc).Name});
-    iBufHeadLoc = iBufHeadLoc(iSortHlu); % Probably not needed.
+    % Index in buffer of HLU
+    iBufHeadLoc = find(strcmp({SensorPositionMat.Channel(ChannelTypes.iChanInBuf).Type}, 'HLU'));
+    % Index in SensorPositionMat of HLU present in buffer
+    iHeadLocInBuf = ChannelTypes.iChanInBuf(iBufHeadLoc);
+    [Unused, iSortHlu] = sort({SensorPositionMat.Channel(iHeadLocInBuf).Name});
+    iBufHeadLoc = iBufHeadLoc(iSortHlu);
     
     %% ===== HEAD TRACKING =====
     %ChannelMat.TransfMeg{end+1} = [ChannelMat.SCS.R, ChannelMat.SCS.T; 0 0 0 1];
