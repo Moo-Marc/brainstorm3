@@ -129,11 +129,20 @@ function Start()
 
     % ===== DISPLAY DIGITIZE WINDOW =====
     % Display panel
-    panelContainer = gui_show('panel_digitize', 'JavaWindow', 'Digitize', [], [], [], []);
+    % Set the window to the position of the main Bst window, which is then hidden
+    panelContainer = gui_show('panel_digitize', 'JavaWindow', 'Digitize', [], [], [], [], [0,0]);
+    % hard-coded width for now
+    panelContainer.handle{1}.setSize(600, 600);
+    %                 MainWindowPos = [jBstFrame.getLocation.getX(), ...
+%                              jBstFrame.getLocation.getY(), ...
+%                              jBstFrame.getWidth(), ...
+%                              jBstFrame.getHeight()];
+%         jBstFrame.setLocation(defPos(1), defPos(2));
+%         jBstFrame.setSize(defPos(3), defPos(4));
+
     % Hide Brainstorm window
     jBstFrame = bst_get('BstFrame');
     jBstFrame.setVisible(0);
-    % Set the window to the left of the screen
     % TODO: fix window width?
     drawnow;
 %     loc = panelContainer.handle{1}.getLocation();
@@ -169,7 +178,7 @@ function [bstPanelNew, panelName] = CreatePanel()
     % Create new panel
     jPanelNew = gui_component('Panel');
     % Font size for the lists
-    veryLargeFontSize = round(72 * bst_get('InterfaceScaling') / 100);
+    veryLargeFontSize = round(100 * bst_get('InterfaceScaling') / 100);
     largeFontSize = round(20 * bst_get('InterfaceScaling') / 100);
     fontSize      = round(11 * bst_get('InterfaceScaling') / 100);
     
@@ -309,11 +318,15 @@ function [bstPanelNew, panelName] = CreatePanel()
     
     % ===== Other buttons =====
     jPanelMisc = gui_river([5,4], [2,4,4,0]);
-        gui_component('button', jPanelMisc, 'br', 'Collect point', [], [], @ManualCollect_Callback);
+        jButtonCollect = gui_component('button', jPanelMisc, 'br', 'Collect point', [], [], @ManualCollect_Callback);
+        %prefButtonSize = jButtonCollect.getPreferredSize();
         % Until initial fids are collected and figure displayed, "delete" button is used to "restart".
         %jButtonDeletePoint = gui_component('button', jPanelMisc, 'hfill', 'Delete last point', [], [], @DeletePoint_Callback);
-        jButtonDeletePoint = gui_component('button', jPanelMisc, 'hfill', 'Start over', [], [], @(h,ev)bst_call(@ResetDataCollection, 1));
-        gui_component('button', jPanelMisc, 'hfill', 'Save as...', [], [], @Save_Callback);
+        jButtonDeletePoint = gui_component('button', jPanelMisc, [], 'Start over', [], [], @(h,ev)bst_call(@ResetDataCollection, 1));
+        %jButtonDeletePoint.setPreferredSize(prefButtonSize);
+        gui_component('label', jPanelMisc, 'hfill', ''); % spacing 
+        jButtonSave = gui_component('button', jPanelMisc, [], 'Save as...', [], [], @Save_Callback);
+        %jButtonSave.setPreferredSize(prefButtonSize);
     jPanelControl.add(jPanelMisc);
     jPanelControl.add(Box.createVerticalStrut(20));
     jPanelNew.add(jPanelControl, BorderLayout.WEST);
@@ -412,17 +425,25 @@ function isOk = EditSettings()
     else
         FidsString = 'NAS, LPA, RPA';
     end
+    if isfield(Digitize.Options, 'ConfigCommands') && iscell(Digitize.Options.ConfigCommands)
+        ConfigString = sprintf('%s; ', Digitize.Options.ConfigCommands{:});
+        ConfigString(end-1:end) = '';
+    else
+        ConfigString = '';
+    end
 %              '<HTML><BR><B>Collection settings</B><BR><BR>Digitize MEG HPI coils (0=no, 1=yes):', ...
     [res, isCancel] = java_dialog('input', ...
             {'<HTML><B>Serial connection settings</B><BR><BR>Serial port name (COM1):', ...
              'Unit Type (Fastrak or Patriot):', ...
-             '<HTML><BR><B>Collection settings</B><BR><BR>List anatomy and MEG fiducials, in desired order<BR>(NAS, LPA, RPA, HPI-N, HPI-L, HPI-R, HPI-X):', ...
-             '<HTML>How many times do you want to localize<BR>the fiducials at the start:', ...
+             '<HTML>Additional device configuration commands, separated by ";"<BR>(see device documentation, e.g. H1,0,0,-1;H2,0,0,-1):', ...
+             '<HTML><BR><B>Collection settings</B><BR><BR>List anatomy and possibly MEG fiducials, in desired order<BR>(NAS, LPA, RPA, HPI-N, HPI-L, HPI-R, HPI-X):', ...
+             '<HTML>How many times do you want to localize<BR>these fiducials at the start:', ...
              'Distance threshold for repeated measure of fiducial locations (mm):', ...
              'Beep when collecting point (0=no, 1=yes):'}, ...
             'Digitizer configuration', [], ...
             {Digitize.Options.ComPort, ...
              Digitize.Options.UnitType, ...
+             ConfigString, ...
              FidsString, ...
              num2str(Digitize.Options.nFidSets), ...
              num2str(Digitize.Options.DistThresh * 1000), ... % m to mm
@@ -432,7 +453,7 @@ function isOk = EditSettings()
     end
     % Check values
     % ~ismember(str2double(res{3}), [0 1])
-    if (length(res) < 6) || isempty(res{1}) || isempty(res{2}) || isempty(res{3}) || isnan(str2double(res{4})) || isnan(str2double(res{5})) || ~ismember(str2double(res{6}), [0 1])
+    if (length(res) < 6) || isempty(res{1}) || isempty(res{2}) || isempty(res{4}) || isnan(str2double(res{5})) || isnan(str2double(res{6})) || ~ismember(str2double(res{7}), [0 1])
         bst_error('Invalid values.', 'Digitize', 0);
         return;
     end
@@ -440,17 +461,17 @@ function isOk = EditSettings()
     Digitize.Options.ComPort  = res{1};
     Digitize.Options.UnitType = lower(res{2});
 %     Digitize.Options.isMEG        = str2double(res{3});
-    if ~isempty(res{4})
-        Digitize.Options.nFidSets = str2double(res{4});
-    end
     if ~isempty(res{5})
-        Digitize.Options.DistThresh = str2double(res{5}) / 1000; % mm to m
+        Digitize.Options.nFidSets = str2double(res{5});
     end
     if ~isempty(res{6})
-        Digitize.Options.isBeep = str2double(res{6});
+        Digitize.Options.DistThresh = str2double(res{6}) / 1000; % mm to m
+    end
+    if ~isempty(res{7})
+        Digitize.Options.isBeep = str2double(res{7});
     end
     % Parse and validate fiducials.
-    Digitize.Options.Fids     = str_split(res{3}, '()[],; ', true); % remove empty
+    Digitize.Options.Fids = str_split(res{4}, '()[],; ', true); % remove empty
     if isempty(Digitize.Options.Fids)
         bst_error('At least 3 anatomy fiducials are required.', 'Digitize', 0);
         return;
@@ -472,6 +493,8 @@ function isOk = EditSettings()
                 Digitize.Options.Fids{iFid} = upper(Digitize.Options.Fids{iFid});
         end
     end
+    % Parse device configuration commands. Remove all spaces, and split at ";"
+    Digitize.Options.ConfigCommands = str_split(strrep(res{3}, ' ', ''), ';', true); % remove empty
 
     if strcmp(Digitize.Options.UnitType,'fastrak')
         Digitize.Options.ComRate = 9600;
@@ -1105,8 +1128,10 @@ function PlotCoordinate(isAdd) %(Loc, Label, Type, iPoint)
     % Add EEG sensor locations to channel stucture
     if strcmpi(Digitize.Points(Digitize.iPoint).Type, 'EEG')
         if isempty(GlobalData.DataSet(Digitize.iDS).Channel)
-            % first point in the list
+            % First point in the list. 
             GlobalData.DataSet(Digitize.iDS).Channel = db_template('channeldesc');
+            %This created an element in the Channel array, so remove it for consistency.
+            GlobalData.DataSet(Digitize.iDS).Channel(1) = []; % keeps struct
         end
         iP = numel(GlobalData.DataSet(Digitize.iDS).Channel) + 1;
         if isAdd
@@ -1145,10 +1170,17 @@ function PlotCoordinate(isAdd) %(Loc, Label, Type, iPoint)
     hHeadPointsLabels  = findobj(hAxes, 'Tag', 'HeadPointsLabels');
     delete(hHeadPointsMarkers);
     delete(hHeadPointsLabels);
+    % If all EEG were removed, ViewSensors won't remove the last remaining (first) EEG, so do it manually.
+    if isempty(GlobalData.DataSet(Digitize.iDS).Channel)
+        hSensorMarkers = findobj(hAxes, 'Tag', 'SensorsMarkers');
+        hSensorLabels  = findobj(hAxes, 'Tag', 'SensorsLabels');
+        delete(hSensorMarkers);
+        delete(hSensorLabels);
+    end
     % View all points in the channel file
     figure_3d('ViewHeadPoints', Digitize.hFig, 1);
     figure_3d('ViewSensors', Digitize.hFig, 1, 1, 0, 'EEG');
-    % Hide head surface
+    % Hide template head surface
     panel_surface('SetSurfaceTransparency', Digitize.hFig, 1, 1);
 end
 
@@ -1442,9 +1474,6 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
                 writeline(Digitize.SerialConnection,'R1');
                 writeline(Digitize.SerialConnection,'R2');
                 %'A' - Alignment Reference Frame
-                %'H' - Hemisphere of Operation
-                writeline(Digitize.SerialConnection,'H1,0,0,-1'); % -Z hemisphere
-                writeline(Digitize.SerialConnection,'H2,0,0,-1'); % -Z hemisphere
                 %'l' - Active Station State
                 % Could check here if 1 and 2 are active.
                 %'N' - Define Tip Offsets % Always factory default on power-up.
@@ -1455,13 +1484,6 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
                 writeline(Digitize.SerialConnection,'O2,2,4,1'); % default precision: position, Euler angles, CRLF
                 %writeline(Digitize.SerialConnection,'O1,52,54,51'); % extended precision: position, Euler angles, CRLF
                 %writeline(Digitize.SerialConnection,'O2,52,54,51'); % extended precision: position, Euler angles, CRLF
-                %'Q' - Angular Operational Envelope
-                writeline(Digitize.SerialConnection,'Q1,180,90,180,-180,-90,-180');
-                writeline(Digitize.SerialConnection,'Q2,180,90,180,-180,-90,-180');
-                %'V' - Position Operational Envelope
-                % Could use to warn if too far.
-                writeline(Digitize.SerialConnection,'V1,100,100,100,-100,-100,-100');
-                writeline(Digitize.SerialConnection,'V2,100,100,100,-100,-100,-100');
                 %'x' - Position Filter Parameters
                 % The macro setting used here also applies to attitude filtering.
                 % 1=none, 2=low, 3=medium (default), 4=high
@@ -1470,10 +1492,28 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
                 %'e' - Define Stylus Button Function
                 writeline(Digitize.SerialConnection,'e1,1'); % Point mode
 
+                % These should be set through the options panel, since they depend on the geometry of setup.
+                % e.g. 'H1,0,0,-1; H2,0,0,-1; Q1,180,90,180,-180,-90,-180; Q2,180,90,180,-180,-90,-180; V1,100,100,100,-100,-100,-100; V2,100,100,100,-100,-100,-100'
+                %'H' - Hemisphere of Operation
+                %writeline(Digitize.SerialConnection,'H1,0,0,-1'); % -Z hemisphere
+                %writeline(Digitize.SerialConnection,'H2,0,0,-1'); % -Z hemisphere
+                %'Q' - Angular Operational Envelope
+                %writeline(Digitize.SerialConnection,'Q1,180,90,180,-180,-90,-180');
+                %writeline(Digitize.SerialConnection,'Q2,180,90,180,-180,-90,-180');
+                %'V' - Position Operational Envelope
+                % Could use to warn if too far.
+                %writeline(Digitize.SerialConnection,'V1,100,100,100,-100,-100,-100');
+                %writeline(Digitize.SerialConnection,'V2,100,100,100,-100,-100,-100');
+
                 %'^K' - *Save Operational Configuration
                 % 'ctrl+K' = char(11)
                 %'^Y' - *Reinitialize System
                 % 'ctrl+Y' = char(25)
+
+                % Apply commands from options after, so they can overwride.
+                for iCmd = 1:numel(Digitize.Options.ConfigCommands)
+                    writeline(Digitize.SerialConnection, Digitize.Options.ConfigCommands{iCmd});
+                end
             elseif strcmp(Digitize.Options.UnitType,'patriot')
                 % request input from stylus
                 writeline(Digitize.SerialConnection,'L1,1\r');
@@ -1519,15 +1559,16 @@ function BytesAvailable_Callback(h, ev) %#ok<INUSD>
         if Digitize.iPoint > numel(Digitize.Points)
             Digitize.Points(Digitize.iPoint).Type = 'EXTRA';
         end
-        switch (Digitize.Mode)
-            case 1,     Digitize.Points(Digitize.iPoint).Loc = [.08 0 -.01];
-            case 2,     Digitize.Points(Digitize.iPoint).Loc = [-.01 .07 0];
-            case 3,     Digitize.Points(Digitize.iPoint).Loc = [-.01 -.07 0];
-            case 4,     Digitize.Points(Digitize.iPoint).Loc = [.08 0 0];
-            case 5,     Digitize.Points(Digitize.iPoint).Loc = [0  .07 0];
-            case 6,     Digitize.Points(Digitize.iPoint).Loc = [0 -.07 0];
-            otherwise,  Digitize.Points(Digitize.iPoint).Loc = rand(1,3) * .15 - .075;
-        end
+%         switch (Digitize.Mode)
+%             case 1,     Digitize.Points(Digitize.iPoint).Loc = [.08 0 -.01];
+%             case 2,     Digitize.Points(Digitize.iPoint).Loc = [-.01 .07 0];
+%             case 3,     Digitize.Points(Digitize.iPoint).Loc = [-.01 -.07 0];
+%             case 4,     Digitize.Points(Digitize.iPoint).Loc = [.08 0 0];
+%             case 5,     Digitize.Points(Digitize.iPoint).Loc = [0  .07 0];
+%             case 6,     Digitize.Points(Digitize.iPoint).Loc = [0 -.07 0];
+%             otherwise,  Digitize.Points(Digitize.iPoint).Loc = rand(1,3) * .15 - .075;
+%         end
+        Digitize.Points(Digitize.iPoint).Loc = rand(1,3) * .15 - .075;
     % Else: Get digitized point coordinates
     else
         vals = zeros(1,7); % header, x, y, z, azimuth, elevation, roll
@@ -1662,7 +1703,7 @@ function BytesAvailable_Callback(h, ev) %#ok<INUSD>
         ChannelMat.HeadPoints = FileMat.HeadPoints;
         bst_save(ChannelFile, ChannelMat, 'v7');
         % Update coordinates
-        for iP = 1:numel(Digitize.Points)
+        for iP = 1:Digitize.iPoint % there could be EEG after, with empty Loc
             Digitize.Points(iP).Loc = [Digitize.Points(iP).Loc, 1] * Digitize.Transf';
         end
         
