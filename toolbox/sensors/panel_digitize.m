@@ -62,8 +62,8 @@ function Start()
     
     % ===== PATIENT ID =====
     % Ask for subject id
-    PatientId = java_dialog('input', 'Please, enter subject id:', 'Digitize', []);
-    if isempty(PatientId)
+    SubjectId = java_dialog('input', 'Please, enter subject id:', 'Digitize', []);
+    if isempty(SubjectId)
         return;
     end
     
@@ -78,7 +78,7 @@ function Start()
         'SubjectName',      SubjectName, ...
         'ConditionName',    [], ...
         'iStudy',           [], ...
-        'PatientID',        PatientId, ...
+        'SubjectId',        SubjectId, ...
         'BeepWav',          [], ...
         'Points',           struct(...
             'Label',     [], ...
@@ -101,12 +101,13 @@ function Start()
     end
     
     % ===== CREATE CONDITION =====
-    % Get current date/time
-    c = clock;
+    % Get current date
+    CurrentDate = char(datetime('now'), 'yyyyMMdd');
+    % c = clock;
     % Condition name: PatientId_Date_Run
     for i = 1:99
         % Generate new condition name
-        Digitize.ConditionName = sprintf('%s_%02d%02d%02d_%02d', Digitize.Options.PatientId, c(1), c(2), c(3), i);
+        Digitize.ConditionName = sprintf('%s_%s_%02d', Digitize.SubjectId, CurrentDate, i);
         % Get condition
         sStudy = bst_get('StudyWithCondition', [SubjectName '/' Digitize.ConditionName]);
         % If condition doesn't exist: ok, keep this one
@@ -191,12 +192,11 @@ function [bstPanelNew, panelName] = CreatePanel()
     gui_component('MenuItem', jMenu, [], 'Edit settings...',    IconLoader.ICON_EDIT, [], @(h,ev)bst_call(@EditSettings), []);
     gui_component('MenuItem', jMenu, [], 'Reset serial connection', IconLoader.ICON_FLIP, [], @(h,ev)bst_call(@CreateSerialConnection), []);
     jMenu.addSeparator();
-    jMenu.addSeparator();
-    gui_component('MenuItem', jMenu, [], 'Save as...', IconLoader.ICON_SAVE, [], @(h,ev)bst_call(@Save_Callback), []);
     if exist('bst_headtracking', 'file')
-        gui_component('MenuItem', jMenu, [], 'Start head tracking',     IconLoader.ICON_ALIGN_CHANNELS, [], @(h,ev)bst_call(@(h,ev)bst_headtracking([],1,1)), []);
+        gui_component('MenuItem', jMenu, [], 'Start head tracking', IconLoader.ICON_ALIGN_CHANNELS, [], @(h,ev)bst_call(@(h,ev)bst_headtracking([],1,1)), []);
         jMenu.addSeparator();
     end
+    gui_component('MenuItem', jMenu, [], 'Save as...', IconLoader.ICON_SAVE, [], @(h,ev)bst_call(@Save_Callback), []);
     gui_component('MenuItem', jMenu, [], 'Save in database and exit', IconLoader.ICON_RESET, [], @(h,ev)bst_call(@Close_Callback), []);
     % EEG Montage menu
     jMenuEeg = gui_component('Menu', jMenuBar, [], 'EEG montage', [], [], [], []);    
@@ -206,7 +206,7 @@ function [bstPanelNew, panelName] = CreatePanel()
     jPanelControl = java_create('javax.swing.JPanel');
     jPanelControl.setLayout(BoxLayout(jPanelControl, BoxLayout.Y_AXIS));
     jPanelControl.setBorder(BorderFactory.createEmptyBorder(7,7,7,7));
-    modeButtonGroup = javax.swing.ButtonGroup();
+    %modeButtonGroup = javax.swing.ButtonGroup();
 
     % ===== Warning Panel =====
     jPanelWarning = gui_river([5,4], [10,10,10,10], '');
@@ -318,14 +318,14 @@ function [bstPanelNew, panelName] = CreatePanel()
     
     % ===== Other buttons =====
     jPanelMisc = gui_river([5,4], [2,4,4,0]);
-        jButtonCollect = gui_component('button', jPanelMisc, 'br', 'Collect point', [], [], @ManualCollect_Callback);
+        gui_component('button', jPanelMisc, 'br', 'Collect point', [], [], @ManualCollect_Callback);
         %prefButtonSize = jButtonCollect.getPreferredSize();
         % Until initial fids are collected and figure displayed, "delete" button is used to "restart".
         %jButtonDeletePoint = gui_component('button', jPanelMisc, 'hfill', 'Delete last point', [], [], @DeletePoint_Callback);
         jButtonDeletePoint = gui_component('button', jPanelMisc, [], 'Start over', [], [], @(h,ev)bst_call(@ResetDataCollection, 1));
         %jButtonDeletePoint.setPreferredSize(prefButtonSize);
         gui_component('label', jPanelMisc, 'hfill', ''); % spacing 
-        jButtonSave = gui_component('button', jPanelMisc, [], 'Save as...', [], [], @Save_Callback);
+        gui_component('button', jPanelMisc, [], 'Save as...', [], [], @Save_Callback);
         %jButtonSave.setPreferredSize(prefButtonSize);
     jPanelControl.add(jPanelMisc);
     jPanelControl.add(Box.createVerticalStrut(20));
@@ -1440,6 +1440,11 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
 %         Digitize.Options.ComRate = 115200;
 
         try
+            % Delete previous connection.
+            if ~isempty(Digitize.SerialConnection)
+                delete(Digitize.SerialConnection);
+                %Digitize.SerialConnection = []; % cleaner than "handle to deleted serialport".
+            end
             % Create the serial port connection and store in global variable.
             Digitize.SerialConnection = serialport(Digitize.Options.ComPort, Digitize.Options.ComRate);
             if strcmp(Digitize.Options.UnitType,'patriot')
@@ -1447,7 +1452,6 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
             else
                 configureTerminator(Digitize.SerialConnection, 'LF');
             end
-            WaitSecs(3); % otherwise freezes when asking for data
             if Digitize.SerialConnection.NumBytesAvailable > 0
                 flush(Digitize.SerialConnection);
             end
@@ -1535,8 +1539,8 @@ function isOk = CreateSerialConnection(h, ev) %#ok<INUSD>
                 continue;
             end
         end
+        isOk = 1;
     end
-    isOk = 1;
 end
 
 
@@ -1576,7 +1580,7 @@ function BytesAvailable_Callback(h, ev) %#ok<INUSD>
         data = [];
         try
             for j=1:2 % 1 point * 2 receivers
-                data = readline(Digitize.SerialConnection);
+                data = char(readline(Digitize.SerialConnection));
                 if strcmp(Digitize.Options.UnitType, 'fastrak')
                     % This is fastrak
                     % The factory default ASCII output record x-y-z-azimuth-elevation-roll is composed of 
@@ -1654,10 +1658,11 @@ function BytesAvailable_Callback(h, ev) %#ok<INUSD>
             Digitize.iPoint > numel(Digitize.Options.Fids)
         iSameFid = find(strcmpi({Digitize.Points(1:(Digitize.iPoint-1)).Label}, Digitize.Points(Digitize.iPoint).Label));
         % Average location of this fiducial point initially, averaging those collected at start only.
-        InitLoc = mean(reshape([Digitize.Points(iSameFid(1:min(numel(iSameFid),max(1,Digitize.Options.nFidSets)))).Loc], [], 3), 1);
+        InitLoc = mean(cat(1, Digitize.Points(iSameFid(1:min(numel(iSameFid),max(1,Digitize.Options.nFidSets)))).Loc), 1);
         Distance = norm((InitLoc - Digitize.Points(Digitize.iPoint).Loc));
         if Distance > Digitize.Options.DistThresh
             ctrl.jLabelFidMessage.setText([Digitize.Points(Digitize.iPoint).Label ' distance exceeds 5 mm']);
+            fprintf('%s distance %1.1f mm\n', Digitize.Points(Digitize.iPoint).Label, Distance * 1000);
             ctrl.jPanelWarning.setBackground(java.awt.Color.red);
             % Extra beep for large distances
             % Beep not working in compiled version, replacing with this:
@@ -1665,6 +1670,7 @@ function BytesAvailable_Callback(h, ev) %#ok<INUSD>
                 sound(Digitize.BeepWav(6000:2:16000,1), 22000);
             else
                 beep on;
+                WaitSecs(0.25); % maybe to help, sometimes it didn't do this 2nd beep
                 beep();
             end
         end
