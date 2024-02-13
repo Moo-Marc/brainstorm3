@@ -2804,16 +2804,22 @@ switch contextName
         end
         
     case 'SpmTpmAtlas'
+        preferSpm = 0;
+        % CALL: bst_get('SpmTpmAtlas', 'SPM')
+        if (nargin >= 2) && strcmpi(varargin{2}, 'SPM')
+            preferSpm = 1;
+        end
+
         % Get template file
         tpmUser = bst_fullfile(bst_get('BrainstormUserDir'), 'defaults', 'spm', 'TPM.nii');
-        if file_exist(tpmUser)
+        if file_exist(tpmUser) && ~preferSpm
             argout1 = tpmUser;
             disp(['BST> SPM12 template found: ' tpmUser]);
             return;
         end
         % If it does not exist: check in brainstorm3 folder
         tpmDistrib = bst_fullfile(bst_get('BrainstormHomeDir'), 'defaults', 'spm', 'TPM.nii');
-        if file_exist(tpmDistrib)
+        if file_exist(tpmDistrib) && ~preferSpm
             argout1 = tpmDistrib;
             disp(['BST> SPM12 template found: ' tpmDistrib]);
             return;
@@ -2826,6 +2832,9 @@ switch contextName
                 argout1 = tpmSpm;
                 disp(['BST> SPM12 template found: ' tpmSpm]);
                 return;
+            elseif preferSpm
+               argout1 = bst_get('SpmTpmAtlas');
+               return
             end
         else
             tpmSpm = '';
@@ -2837,8 +2846,7 @@ switch contextName
         if ~isempty(tpmSpm)
             disp([' - ' tpmSpm]);
         end
-        % Return the preferred location: .brainstorm/defaults/spm/TPM.nii
-        argout1 = tpmUser;
+        argout1 = [];
         
     case 'PythonExe'
         % Get saved value
@@ -3220,7 +3228,7 @@ switch contextName
             argout1.FreqBands = defPref.FreqBands;
         end
         
-    case 'TimefreqOptions_plv'
+    case 'TimefreqOptions_plv' % not used
         defPref.isTimeBands     = 0;
         defPref.isFreqBands     = 1;
         defPref.isFreqLog       = 0;
@@ -3278,6 +3286,28 @@ switch contextName
             argout1.FreqBands = defPref.FreqBands;
         end
     
+    case 'TimefreqOptions_stft'
+        defPref.isTimeBands     = 0;
+        defPref.isFreqBands     = 0;
+        defPref.isFreqLog       = 0;
+        defPref.TimeBands       = {};
+        defPref.Freqs           = [];
+        defPref.FreqsLog        = [];
+        defPref.FreqBands       = bst_get('DefaultFreqBands');
+        defPref.Measure         = 'power';
+        defPref.Output          = 'all';
+        defPref.ClusterFuncTime = 'after';
+        defPref.StftWinLen      = 1;
+        defPref.StftWinOvr      = 0;
+        defPref.StftFrqMax      = 0;
+        argout1 = FillMissingFields(contextName, defPref);
+        if isempty(argout1.Freqs)
+            argout1.Freqs = defPref.Freqs;
+        end
+        if ~isempty(argout1.FreqBands) && ~ischar(argout1.FreqBands{1,2})
+            argout1.FreqBands = defPref.FreqBands;
+        end
+
     case 'ExportBidsOptions'
         defPref.ProjName    = [];
         defPref.ProjID      = [];
@@ -3521,7 +3551,8 @@ switch contextName
                 argout1 = {...
                     {'.mesh'}, 'BrainVISA (*.mesh)',   'MESH'; ...
                     {'.dfs'},  'BrainSuite (*.dfs)',   'DFS'; ...
-                    {'.fs'},   'FreeSurfer (*.fs)',    'FS'
+                    {'.fs'},   'FreeSurfer (*.fs)',    'FS'; ...
+                    {'.obj'},  'Wavefront OBJ (*.obj)', 'OBJ'; ...
                     {'.off'},  'Geomview OFF (*.off)', 'OFF'; ...
                     {'.gii'},  'GIfTI (*.gii)',        'GII'; ...
                     {'.tri'},  'TRI (*.tri)',          'TRI'; ...
@@ -3805,7 +3836,7 @@ switch contextName
                     {'.txt'}, 'EEG/NIRS: ASCII: XYZ,Name (*.txt)',        'ASCII_XYZN-EEG'; ...
                     {'.txt'}, 'EEG/NIRS: ASCII: XYZ_MNI,Name (*.txt)',    'ASCII_XYZN_MNI-EEG'; ...
                     {'.txt'}, 'EEG/NIRS: ASCII: XYZ_World,Name (*.txt)',  'ASCII_XYZN_WORLD-EEG'; ...
-                    {'.txt'}, 'NIRS: Brainsight (*.txt)',            'BRAINSIGHT-TXT'; ...
+                    {'.txt'}, 'EEG/NIRS: Brainsight (*.txt)',             'BRAINSIGHT-TXT'; ...
                     {'.tsv'}, 'NIRS: BIDS optrodes.tsv, subject space mm (*.tsv)',     'BIDS-NIRS-SCANRAS-MM'; ...
                     {'.tsv'}, 'NIRS: BIDS optrodes.tsv, MNI space mm (*.tsv)',         'BIDS-NIRS-MNI-MM'; ...
                     {'.tsv'}, 'NIRS: BIDS optrodes.tsv, ALS/SCS/CTF space mm (*.tsv)', 'BIDS-NIRS-ALS-MM'; ...
@@ -3923,11 +3954,15 @@ switch contextName
         % Font types
         fontTypes = {};
         if (nargin >= 3)
-            fontTypes{end + 1} = varargin{3};
+            if ischar(varargin{3})
+                fontTypes = varargin(3);
+            else
+                fontTypes = varargin{3};
+            end
+        else
+            fontTypes{end + 1} = 'Arial';            % Default font
+            fontTypes{end + 1} = 'Liberation Sans';  % Free Arial substitute
         end
-        fontTypes{end + 1} = 'Arial';  % Default font
-        fontTypes{end + 1} = 'Liberation Sans';  % Free Arial substitute
-        
         % Check for cached font
         foundFont = 0;
         for iFont = 1 : length(fontTypes)

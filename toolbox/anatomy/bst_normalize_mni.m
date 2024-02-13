@@ -80,18 +80,18 @@ end
 bst_plugin('SetProgressLogo', 'spm12');
 % Get template file
 TpmFile = bst_get('SpmTpmAtlas');
-% If it does not exist: download
-if isempty(TpmFile) || ~file_exist(TpmFile)
-    % Create folder
-    if ~file_exist(bst_fileparts(TpmFile))
-        mkdir(bst_fileparts(TpmFile));
-    end
+% If it is not found: download
+if isempty(TpmFile)
     % URL to download
-    tmpUrl = 'http://neuroimage.usc.edu/bst/getupdate.php?t=SPM_TPM';
+    tpmUrl = 'http://neuroimage.usc.edu/bst/getupdate.php?t=SPM_TPM';
     % Path to downloaded file
-    tpmZip = bst_fullfile(bst_get('BrainstormUserDir'), 'defaults', 'spm', 'SPM_TPM');
+    tpmZip = bst_fullfile(bst_get('BrainstormUserDir'), 'defaults', 'spm', 'SPM_TPM.zip');
+    % Create 'spm' folder if needed
+    if ~isdir(bst_fileparts(tpmZip))
+        mkdir(bst_fileparts(tpmZip));
+    end
     % Download file
-    errMsg = gui_brainstorm('DownloadFile', tmpUrl, tpmZip, 'Download template');
+    errMsg = gui_brainstorm('DownloadFile', tpmUrl, tpmZip, 'Download template');
     % Error message
     if ~isempty(errMsg)
         errMsg = ['Impossible to download template:' 10 errMsg];
@@ -99,7 +99,7 @@ if isempty(TpmFile) || ~file_exist(TpmFile)
     end
     % Progress bar
     bst_progress('text', 'Importing SPM template...');
-    % URL: Download zip file
+    % Unzip file
     try
         unzip(tpmZip, bst_fileparts(tpmZip));
     catch
@@ -115,7 +115,7 @@ if isempty(TpmFile) || ~file_exist(TpmFile)
     file_delete(tpmZip, 1);
     % Get template file
     TpmFile = bst_get('SpmTpmAtlas');
-    if isempty(TpmFile) || ~file_exist(TpmFile)
+    if isempty(TpmFile)
         errMsg = 'Missing file TPM.nii';
         return;
     end

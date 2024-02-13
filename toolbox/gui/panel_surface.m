@@ -1784,6 +1784,14 @@ function [isOk, TessInfo] = UpdateSurfaceData(hFig, iSurfaces)
                 % and the number of vertices of the target surface patch (IGNORE TEST FOR MRI)
                 if strcmpi(TessInfo(iTess).Name, 'Anatomy')
                     % Nothing to check right now
+                elseif ~isempty(strfind(TessInfo(iTess).DataSource.FileName, '_connect1'))
+                    TessInfo(iTess).DataSource.Atlas = [];
+                    if size(TessInfo(iTess).Data, 1) ~= nVertices
+                        bst_error(sprintf(['Number of connectivity values (%d) is different from number of vertices (%d).\n\n' ...
+                                  'Please compute the connectivity metric.'], size(TessInfo(iTess).Data, 1), nVertices), 'Data mismatch', 0);
+                        isOk = 0;
+                        return;
+                    end
                 elseif ~isempty(TessInfo(iTess).DataSource.Atlas) && ~isempty(TessInfo(iTess).DataSource.Atlas.Scouts)
                     if (size(TessInfo(iTess).Data, 1) ~= length(TessInfo(iTess).DataSource.Atlas.Scouts))
                         bst_error(sprintf(['Number of sources (%d) is different from number of scouts (%d).\n\n' ...
@@ -1949,6 +1957,7 @@ end
 
 %% ===== UPDATE SURFACE COLORMAP =====
 function UpdateSurfaceColormap(hFig, iSurfaces)
+    global GlobalData;
     % Get surfaces list 
     TessInfo = getappdata(hFig, 'Surface');
     if isempty(TessInfo)
@@ -2022,8 +2031,15 @@ function UpdateSurfaceColormap(hFig, iSurfaces)
             if strcmpi(DataType, 'Data') && ~isempty(ColormapInfo.Type) && ismember(ColormapInfo.Type, {'eeg', 'meg', 'nirs'})
                 DataType = upper(ColormapInfo.Type);
             % sLORETA: Do not use regular source scaling (pAm)
-            elseif strcmpi(DataType, 'Source') && ~isempty(strfind(lower(TessInfo(iTess).DataSource.FileName), 'sloreta'))
-                DataType = 'sLORETA';
+            elseif strcmpi(DataType, 'Source')
+                if ~isempty(strfind(lower(TessInfo(iTess).DataSource.FileName), 'sloreta'))
+                    DataType = 'sLORETA';
+                elseif ~strcmpi(file_gettype(lower(TessInfo(iTess).DataSource.FileName)), 'headmodel')
+                    [iDS, iResult] = bst_memory('LoadResultsFile', TessInfo(iTess).DataSource.FileName, 0);
+                    if ~isempty(strfind(lower(GlobalData.DataSet(iDS).Results(iResult).Function), 'sloreta'));
+                        DataType = 'sLORETA';
+                    end
+                end
             end
         end     
         % === DISPLAY ON MRI ===
@@ -2048,6 +2064,10 @@ function UpdateSurfaceColormap(hFig, iSurfaces)
     end
     
     % ===== CONFIGURE COLORBAR =====
+    % DataType for 3D topography with surface
+    if (length(iSurfaces) == 1) && isempty(TessInfo(iTess).DataSource.Type) && isempty(TessInfo(iTess).ColormapType)
+        DataType = upper(ColormapInfo.Type);
+    end
     % Display only one colorbar (preferentially the results colorbar)
     if ~isempty(ColormapInfo.Type)
         bst_colormaps('ConfigureColorbar', hFig, ColormapInfo.Type, DataType, ColormapInfo.DisplayUnits);
@@ -2502,7 +2522,7 @@ function SetSurfaceSmooth(hFig, iSurf, value, isSave)
     if strcmpi(TessInfo(iSurf).Name, 'FEM')
         return;
     end
-    % Update surface transparency
+    % Update surface smooth
     TessInfo(iSurf).SurfSmoothValue = value;
     setappdata(hFig, 'Surface', TessInfo);
     % Update panel controls

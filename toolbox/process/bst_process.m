@@ -997,7 +997,7 @@ function OutputFile = ProcessFilter(sProcess, sInput)
     if isfield(sProcess.options, 'Comment') && isfield(sProcess.options.Comment, 'Value') && ~isempty(sProcess.options.Comment.Value)
         sMat.Comment = sProcess.options.Comment.Value;
     % Modify comment based on modifications in function Run
-    elseif ~isRaw && isfield(sInput, 'Comment') && ~isempty(sInput.Comment) && ~isequal(sMat.Comment, sInput.Comment)
+    elseif ~isRaw && isfield(sInput, 'Comment') && ~isempty(sInput.Comment) && ~isequal(sMat.Comment, sInput.Comment) && ~isAbsolute
         sMat.Comment = sInput.Comment;
     % Add file tag (defined in process Run function)
     elseif isfield(sInput, 'CommentTag') && ~isempty(sInput.CommentTag)
@@ -1904,7 +1904,9 @@ function [sInput, nSignals, iRows] = LoadInputFile(FileName, Target, TimeWindow,
         isflip = ismember(sInput.DataType, {'link','results'}) && ...
                          isempty(strfind(FileName, '_norm')) && ...
                          isempty(strfind(FileName, 'NIRS'))  && ...
-                         isempty(strfind(FileName, 'Summed_sensitivities'));
+                         isempty(strfind(FileName, 'Summed_sensitivities')) && ... 
+                         isempty(strfind(FileName, 'bold')); 
+        
         % Call process
         sMat = CallProcess('process_extract_scout', FileName, [], ...
             'timewindow',     TimeWindow, ...
@@ -2280,6 +2282,9 @@ function [OutputFiles, OutputFiles2, sInputs, sInputs2] = CallProcess(sProcess, 
         elseif ismember(lower(defType), {'timewindow','baseline','poststim','value','range','freqrange','freqrange_static','combobox'}) && iscell(defVal) && ~isempty(defVal) && ~iscell(newVal) && ~isempty(newVal)
             updateVal{1} = newVal;
         elseif ismember(lower(defType), {'combobox_label'}) && iscell(defVal) && ~isempty(defVal) && ismember(newVal, defVal{2})
+            if iscell(newVal) && length(newVal) == 1
+                newVal = newVal{1};
+            end
             updateVal{1} = newVal;
         % Generic call: just copy the value
         else
