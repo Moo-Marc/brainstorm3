@@ -161,8 +161,14 @@ function [bstPanelNew, panelName] = CreatePanel()
     fontSize      = round(11 * bst_get('InterfaceScaling') / 100);
 
     % ===== MENU BAR =====
+    jPanelMenu = gui_component('panel');
     jMenuBar = java_create('javax.swing.JMenuBar');
-    jPanelNew.add(jMenuBar, BorderLayout.NORTH);
+    jPanelMenu.add(jMenuBar, BorderLayout.NORTH);
+    jLabelNews = gui_component('label', jPanelMenu, BorderLayout.CENTER, 'Digitize version 2024.  To go back to original version: File > Switch to old...  See Help.', [], [], [], fontSize);
+    jLabelNews.setHorizontalAlignment(SwingConstants.CENTER);
+    jLabelNews.setOpaque(true);
+    jLabelNews.setBackground(java.awt.Color.yellow);
+
     % File menu
     jMenu = gui_component('Menu', jMenuBar, [], 'File', [], [], [], []);
     gui_component('MenuItem', jMenu, [], 'Start over', IconLoader.ICON_RELOAD, [], @(h,ev)bst_call(@ResetDataCollection, 1), []);
@@ -183,6 +189,8 @@ function [bstPanelNew, panelName] = CreatePanel()
     jMenuHelp = gui_component('Menu', jMenuBar, [], 'Help', [], [], [], []);
     gui_component('MenuItem', jMenuHelp, [], 'Digitize tutorial', [], [], @(h,ev)web('https://neuroimage.usc.edu/brainstorm/Tutorials/TutDigitize', '-browser'), []);
     
+    jPanelNew.add(jPanelMenu, BorderLayout.NORTH);
+
     % ===== Control Panel =====
     jPanelControl = gui_component('panel');
     jPanelControl.setBorder(BorderFactory.createEmptyBorder(0,0,7,0));
@@ -224,7 +232,8 @@ function [bstPanelNew, panelName] = CreatePanel()
         jListCoord = JList(fontSize);
         jListCoord.setCellRenderer(BstStringListRenderer(fontSize));
         jPanelScrollList = JScrollPane();
-        jPanelScrollList.getLayout.getViewport.setView(jListCoord);
+        jPanelScrollList.setViewportView(jListCoord);
+        %jPanelScrollList.getLayout.getViewport.setView(jListCoord);
         jPanelScrollList.setHorizontalScrollBarPolicy(jPanelScrollList.HORIZONTAL_SCROLLBAR_NEVER);
         jPanelScrollList.setVerticalScrollBarPolicy(jPanelScrollList.VERTICAL_SCROLLBAR_ALWAYS);
         jPanelScrollList.setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
@@ -487,6 +496,7 @@ function UpdateList()
     listModel = javax.swing.DefaultListModel();
     % Add points to list
     iHeadPoints = 0;
+    lastIndex = 0;
     for iP = 1:numel(Digitize.Points)
         if ~isempty(Digitize.Points(iP).Label)
             listModel.addElement(sprintf('%s     %3.3f   %3.3f   %3.3f', Digitize.Points(iP).Label, Digitize.Points(iP).Loc .* 100));
@@ -494,17 +504,19 @@ function UpdateList()
             iHeadPoints = iHeadPoints + 1;
             listModel.addElement(sprintf('%03d     %3.3f   %3.3f   %3.3f', iHeadPoints, Digitize.Points(iP).Loc .* 100));
         end
+        if ~isempty(Digitize.Points(iP).Loc)
+            lastIndex = iP;
+        end
     end
     % Set this list
     ctrl.jListCoord.setModel(listModel);
-    ctrl.jListCoord.repaint();
-    drawnow;
-    % Scroll down
-    %lastIndex = min(listModel.getSize(), 12 + nRecEEG + nHeadShape);
-    %selRect = ctrl.jListCoord.getCellBounds(lastIndex-1, lastIndex-1);
-    %ctrl.jListCoord.scrollRectToVisible(selRect);
+    % Scroll to last collected point (non-empty Loc), +1 if more points listed.
+    if listModel.getSize() > lastIndex
+        ctrl.jListCoord.ensureIndexIsVisible(lastIndex); % 0-indexed
+    else
+        ctrl.jListCoord.ensureIndexIsVisible(lastIndex-1); % 0-indexed, -1 works even if 0
+    end
     %ctrl.jListCoord.repaint();
-    ctrl.jListCoord.getParent().getParent().repaint();
 
     % Also update label of next point to digitize.
     if numel(Digitize.Points) >= Digitize.iPoint + 1 && ~isempty(Digitize.Points(Digitize.iPoint + 1).Label)
