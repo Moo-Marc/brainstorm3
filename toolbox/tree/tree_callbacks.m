@@ -31,6 +31,8 @@ function jPopup = tree_callbacks( varargin )
 % =============================================================================@
 %
 % Authors: Francois Tadel, 2008-2023
+%          Raymundo Cassani, 2023-2024
+%          Chinmay Chinara, 2023-2024
 
 import org.brainstorm.icon.*;
 import java.awt.event.KeyEvent;
@@ -66,7 +68,7 @@ nodeType = char(bstNodes(1).getType());
 filenameRelative = char(bstNodes(1).getFileName());
 % Build full filename (depends on the file type)
 switch lower(nodeType)
-    case {'surface', 'scalp', 'cortex', 'outerskull', 'innerskull', 'fibers', 'fem', 'other', 'subject', 'studysubject', 'anatomy', 'volatlas'}
+    case {'surface', 'scalp', 'cortex', 'outerskull', 'innerskull', 'fibers', 'fem', 'other', 'subject', 'studysubject', 'anatomy', 'volatlas', 'volct'}
         filenameFull = bst_fullfile(ProtocolInfo.SUBJECTS, filenameRelative);
     case {'study', 'condition', 'rawcondition', 'channel', 'headmodel', 'data','rawdata', 'datalist', 'results', 'kernel', 'pdata', 'presults', 'ptimefreq', 'pspectrum', 'image', 'video', 'videolink', 'noisecov', 'ndatacov', 'dipoles','timefreq', 'spectrum', 'matrix', 'matrixlist', 'pmatrix', 'spike'}
         filenameFull = bst_fullfile(ProtocolInfo.STUDIES, filenameRelative);
@@ -164,19 +166,19 @@ switch (lower(action))
                 % MRI: Display in MRI viewer
                 view_mri(filenameRelative);
                 
-            % ===== VOLUME ATLAS =====
-            case 'volatlas'
+            % ===== VOLUME ATLAS AND VOLUME CT=====
+            case {'volatlas', 'volct'}
                 % Get subject
                 iSubject = bstNodes(1).getStudyIndex();
                 iAnatomy = bstNodes(1).getItemIndex();
                 sSubject = bst_get('Subject', iSubject);
-                % Atlas: display as overlay on the default MRI
+                % Atlas/CT: display as overlay on the default MRI
                 if (iAnatomy ~= sSubject.iAnatomy)
                     view_mri(sSubject.Anatomy(sSubject.iAnatomy).FileName, filenameRelative);
                 else
                     view_mri(filenameRelative);
                 end
-                
+
             % ===== SURFACE ===== 
             % Mark/unmark (items selected : 1/category)
             case {'scalp', 'outerskull', 'innerskull', 'cortex', 'fibers', 'fem'}
@@ -206,7 +208,16 @@ switch (lower(action))
                 end
             % Other surface: display it
             case 'other'
-                view_surface(filenameRelative);
+                % Display mesh with 3D orthogonal slices of the default MRI only if it is an isosurface
+                if ~isempty(regexp(filenameRelative, 'isosurface', 'match'))
+                    iSubject = bstNodes(1).getStudyIndex();
+                    sSubject = bst_get('Subject', iSubject);
+                    MriFile = sSubject.Anatomy(1).FileName;
+                    hFig = view_mri_3d(MriFile, [], 0.3, []);
+                    view_surface(filenameRelative, [], [], hFig, []);
+                else
+                    view_surface(filenameRelative);
+                end
                 
             % ===== CHANNEL =====
             % If one and only one modality available : display sensors
@@ -220,7 +231,7 @@ switch (lower(action))
                     if strcmpi(DisplayMod{1}, 'ECOG+SEEG') || (length(DisplayMod) >= 2) && all(ismember({'SEEG','ECOG'}, DisplayMod))
                         DisplayChannels(bstNodes, 'ECOG+SEEG', 'cortex', 1);
                     elseif strcmpi(DisplayMod{1}, 'SEEG')
-                        DisplayChannels(bstNodes, DisplayMod{1}, 'anatomy', 1);
+                        DisplayChannels(bstNodes, DisplayMod{1}, 'anatomy', 1, 0);
                     elseif strcmpi(DisplayMod{1}, 'ECOG')
                         DisplayChannels(bstNodes, DisplayMod{1}, 'cortex', 1);
                     elseif ismember(DisplayMod{1}, {'MEG','MEG GRAD','MEG MAG'})
@@ -562,7 +573,7 @@ switch (lower(action))
                     gui_component('MenuItem', jPopup, [], 'Import anatomy folder', IconLoader.ICON_ANATOMY, [], @(h,ev)bst_call(@import_anatomy, iSubject, 0));
                     gui_component('MenuItem', jPopup, [], 'Import anatomy folder (auto)', IconLoader.ICON_ANATOMY, [], @(h,ev)bst_call(@import_anatomy, iSubject, 1));
                     gui_component('MenuItem', jPopup, [], 'Import MRI', IconLoader.ICON_ANATOMY, [], @(h,ev)bst_call(@import_mri, iSubject, [], [], 1));
-                    gui_component('MenuItem', jPopup, [], 'Import CT', IconLoader.ICON_ANATOMY, [], @(h,ev)bst_call(@import_mri, iSubject, [], [], 1, 1, 'Import CT'));
+                    gui_component('MenuItem', jPopup, [], 'Import CT', IconLoader.ICON_VOLCT, [], @(h,ev)bst_call(@import_mri, iSubject, [], [], 1, 1, 'Import CT'));
                     gui_component('MenuItem', jPopup, [], 'Import surfaces', IconLoader.ICON_SURFACE, [], @(h,ev)bst_call(@import_surfaces, iSubject));
                     gui_component('MenuItem', jPopup, [], 'Import fibers', IconLoader.ICON_FIBERS, [], @(h,ev)bst_call(@import_fibers, iSubject));
                     gui_component('MenuItem', jPopup, [], 'Convert DWI to DTI', IconLoader.ICON_FIBERS, [], @(h,ev)bst_call(@process_dwi2dti, 'ComputeInteractive', iSubject));
@@ -632,7 +643,7 @@ switch (lower(action))
                     gui_component('MenuItem', jMenuMniVol, [], 'Import from file', IconLoader.ICON_ANATOMY, [], @(h,ev)bst_call(@import_mniatlas, iSubject));
 
                     % === MRI SEGMENTATION ===
-                    fcnMriSegment(jPopup, sSubject, iSubject, [], 0);
+                    fcnMriSegment(jPopup, sSubject, iSubject, [], 0, 0);
                     % Export menu (added later)
                     if (iSubject ~= 0)
                         jMenuExport{1} = gui_component('MenuItem', [], [], 'Export subject',  IconLoader.ICON_SAVE, [], @(h,ev)export_protocol(bst_get('iProtocol'), iSubject));
@@ -1019,7 +1030,7 @@ switch (lower(action))
                 end
                 
 %% ===== POPUP: ANATOMY =====
-            case {'anatomy', 'volatlas'}
+            case {'anatomy', 'volatlas', 'volct'}
                 iSubject = bstNodes(1).getStudyIndex();
                 sSubject = bst_get('Subject', iSubject);
                 iAnatomy = [];
@@ -1028,6 +1039,7 @@ switch (lower(action))
                 end
                 mriComment = lower(char(bstNodes(1).getComment()));
                 isAtlas = strcmpi(nodeType, 'volatlas') || ~isempty(strfind(mriComment, 'tissues')) || ~isempty(strfind(mriComment, 'aseg')) || ~isempty(strfind(mriComment, 'atlas'));
+                isCt    = strcmpi(nodeType, 'volct');
                     
                 if (length(bstNodes) == 1)
                     % MENU : DISPLAY
@@ -1059,11 +1071,11 @@ switch (lower(action))
                             gui_component('MenuItem', jMenuDisplay, [], 'Histogram', IconLoader.ICON_HISTOGRAM, [], @(h,ev)view_mri_histogram(filenameFull));
                         end
                     % === MENU: EDIT MRI ===
-                    if ~bst_get('ReadOnly') && ~isAtlas
+                    if ~bst_get('ReadOnly') && ~isAtlas && ~isCt
                         gui_component('MenuItem', jPopup, [], 'Edit MRI...', IconLoader.ICON_ANATOMY, [], @(h,ev)view_mri(filenameRelative, 'EditMri'));
                     end
                     % === MENU: SET AS DEFAULT ===
-                    if ~bst_get('ReadOnly') && (~ismember(iAnatomy, sSubject.iAnatomy) || ~bstNodes(1).isMarked()) && ~isAtlas
+                    if ~bst_get('ReadOnly') && (~ismember(iAnatomy, sSubject.iAnatomy) || ~bstNodes(1).isMarked()) && ~isAtlas && ~isCt
                         gui_component('MenuItem', jPopup, [], 'Set as default MRI', IconLoader.ICON_GOOD, [], @(h,ev)SetDefaultSurf(iSubject, 'Anatomy', iAnatomy));
                     end
                     % === MENU: CREATE SURFACES ===
@@ -1092,7 +1104,7 @@ switch (lower(action))
                         end
                     end
                     % === MRI SEGMENTATION ===
-                    fcnMriSegment(jPopup, sSubject, iSubject, iAnatomy, isAtlas);
+                    fcnMriSegment(jPopup, sSubject, iSubject, iAnatomy, isAtlas, isCt);
                 end
                 % === MENU: EXPORT ===
                 % Export menu (added later)
@@ -2255,22 +2267,24 @@ switch (lower(action))
                     DataType = sStudy.Timefreq(iTimefreq).DataType;
                     DataFile = sStudy.Timefreq(iTimefreq).DataFile;
                 end
+                if strcmpi(DataType, 'data')
+                    % Get avaible modalities for this data file
+                    DisplayMod = bst_get('TimefreqDisplayModalities', filenameRelative);
+                    % Add SEEG+ECOG
+                    if ~isempty(DisplayMod) && all(ismember({'SEEG','ECOG'}, DisplayMod))
+                        DisplayMod = cat(2, {'ECOG+SEEG'}, DisplayMod);
+                    end
+                end
                 % One file selected
                 if (length(bstNodes) == 1)
                     % ===== RECORDINGS =====
                     if strcmpi(DataType, 'data')
-                        % Get avaible modalities for this data file
-                        DisplayMod = bst_get('TimefreqDisplayModalities', filenameRelative);
-                        % Add SEEG+ECOG 
-                        if all(ismember({'SEEG','ECOG'}, DisplayMod))
-                            DisplayMod = cat(2, {'ECOG+SEEG'}, DisplayMod);
-                        end
                         % Power spectrum
                         gui_component('MenuItem', jPopup, [], 'Power spectrum', IconLoader.ICON_SPECTRUM, [], @(h,ev)view_spectrum(filenameRelative, 'Spectrum'));
                         AddSeparator(jPopup);
                         % Topography
                         isGradNorm = strcmpi(nodeType, 'spectrum');
-                        jSubMenus = fcnPopupTopoNoInterp(jPopup, filenameRelative, DisplayMod, 0, isGradNorm, 0);
+                        jSubMenus = fcnPopupTopoNoInterp(jPopup, filenameRelative, DisplayMod, 1, isGradNorm, 0);
                         % Interpolate SEEG/ECOG on the anatomy
                         for iMod = 1:length(DisplayMod)
                             % Create submenu if there are multiple modalities
@@ -2288,7 +2302,7 @@ switch (lower(action))
                             AddSeparator(jPopup);
                             % EEG: Display on scalp
                             if strcmpi(DisplayMod{iMod}, 'EEG') && ~isempty(sSubject) && ~isempty(sSubject.iScalp)
-                                gui_component('MenuItem', jPopup, [], 'Display on scalp', IconLoader.ICON_SURFACE_SCALP, [], @(h,ev)view_surface_data(sSubject.Surface(sSubject.iScalp).FileName, filenameRelative, 'EEG'));
+                                gui_component('MenuItem', jMenuModality, [], 'Display on scalp', IconLoader.ICON_SURFACE_SCALP, [], @(h,ev)view_surface_data(sSubject.Surface(sSubject.iScalp).FileName, filenameRelative, 'EEG'));
                             % SEEG/ECOG: Display on cortex or MRI
                             elseif ismember(DisplayMod{iMod}, {'SEEG', 'ECOG', 'ECOG+SEEG'}) && ~isempty(sSubject)
                                 if ~isempty(sSubject.iCortex)
@@ -2343,6 +2357,20 @@ switch (lower(action))
                     % ===== CLUSTERS/SCOUTS =====
                     else
                         gui_component('MenuItem', jPopup, [], 'Power spectrum', IconLoader.ICON_SPECTRUM, [], @(h,ev)view_spectrum(filenameRelative, 'Spectrum'));
+                    end
+                else
+                    % Display of multiple files
+                    if ~isempty(DisplayMod)
+                        % === 2DLAYOUT ===
+                        mod2D = intersect(DisplayMod, {'EEG', 'MEG', 'MEG MAG', 'MEG GRAD', 'ECOG', 'SEEG', 'ECOG+SEEG', 'NIRS'});
+                        if (length(mod2D) == 1)
+                            gui_component('MenuItem', jPopup, [], ['2D Layout: ' mod2D{1}], IconLoader.ICON_2DLAYOUT, [], @(h,ev)bst_call(@view_topography, GetAllFilenames(bstNodes), mod2D{1}, '2DLayout'));
+                        elseif (length(mod2D) > 1)
+                            jMenu2d = gui_component('Menu', jPopup, [], '2D Layout', IconLoader.ICON_2DLAYOUT, [], []);
+                            for iMod = 1:length(mod2D)
+                                gui_component('MenuItem', jMenu2d, [], mod2D{iMod}, IconLoader.ICON_2DLAYOUT, [], @(h,ev)bst_call(@view_topography, GetAllFilenames(bstNodes), mod2D{iMod}, '2DLayout'));
+                            end
+                        end
                     end
                 end
                 % Project sources
@@ -2823,7 +2851,7 @@ end % END SWITCH( ACTION )
         jMenuAlignManual = gui_component('Menu', jPopup, [], 'Align manually on...', IconLoader.ICON_ALIGN_SURFACES, [], []);
         % ADD ANATOMIES
         for iAnat = 1:length(sSubject.Anatomy)
-            if isempty(strfind(sSubject.Anatomy(iAnat).FileName, '_volatlas'))
+            if isempty(strfind(sSubject.Anatomy(iAnat).FileName, '_volatlas')) && isempty(strfind(sSubject.Anatomy(iAnat).FileName, '_volct'))
                 fullAnatFile = bst_fullfile(ProtocolInfo.SUBJECTS, sSubject.Anatomy(iAnat).FileName);
                 gui_component('MenuItem', jMenuAlignManual, [], sSubject.Anatomy(iAnat).Comment, IconLoader.ICON_ANATOMY, [], @(h,ev)tess_align_manual(fullAnatFile, filenameFull));
             end
@@ -3069,7 +3097,7 @@ end
 
 
 %% ===== MRI SEGMENTATION =====
-function fcnMriSegment(jPopup, sSubject, iSubject, iAnatomy, isAtlas)
+function fcnMriSegment(jPopup, sSubject, iSubject, iAnatomy, isAtlas, isCt)
     import org.brainstorm.icon.*;
     % No anatomy: nothing to do
     if isempty(sSubject.Anatomy)
@@ -3087,24 +3115,35 @@ function fcnMriSegment(jPopup, sSubject, iSubject, iAnatomy, isAtlas)
     else
         MriFile = {sSubject.Anatomy(iAnatomy).FileName};
     end
+    % Menu label
+    volType = 'MRI';
+    volIcon = 'ICON_ANATOMY';
+    if isCt
+        volType = 'CT';
+        volIcon = 'ICON_VOLCT';
+    end
     % Add menu separator
     AddSeparator(jPopup);
 
     % === MRI/CT ===
     if ~isAtlas
         % Create sub-menu
-        jMenu = gui_component('Menu', jPopup, [], 'MRI segmentation', IconLoader.ICON_ANATOMY);
+        jMenu = gui_component('Menu', jPopup, [], [volType, ' segmentation'], IconLoader.(volIcon));
+        % === MESH FROM THRESHOLD CT ===
+        if (length(iAnatomy) <= 1) && isCt
+            gui_component('MenuItem', jMenu, [], 'Generate threshold mesh from CT', IconLoader.ICON_SURFACE_SCALP, [], @(h,ev)tess_isosurface(MriFile));
+        end
         % === GENERATE HEAD/BEM ===
-        if (length(iAnatomy) <= 1)
+        if (length(iAnatomy) <= 1) && ~isCt
             gui_component('MenuItem', jMenu, [], 'Generate head surface', IconLoader.ICON_SURFACE_SCALP, [], @(h,ev)tess_isohead(MriFile));
             gui_component('MenuItem', jMenu, [], 'Generate BEM surfaces', IconLoader.ICON_FEM, [], @(h,ev)bst_call(@process_generate_bem, 'ComputeInteractive', iSubject, iAnatomy));
         end
         % === GENERATE FEM ===
-        if (length(iAnatomy) <= 2)   % T1 + optional T2
+        if (length(iAnatomy) <= 2) && ~isCt  % T1 + optional T2
             jItemFem = gui_component('MenuItem', jMenu, [], 'Generate FEM mesh', IconLoader.ICON_FEM, [], @(h,ev)bst_call(@process_fem_mesh, 'ComputeInteractive', iSubject, iAnatomy));
         end
-        % === SEGMENTATION ===
-        if (length(iAnatomy) <= 1)
+        % === MRI SEGMENTATION ===
+        if (length(iAnatomy) <= 1) && ~isCt
             AddSeparator(jMenu);
             % gui_component('MenuItem', jMenu, [], 'SPM12 canonical surfaces', IconLoader.ICON_FEM, [], @(h,ev)bst_call(@process_generate_canonical, 'ComputeInteractive', iSubject, iAnatomy));
             gui_component('MenuItem', jMenu, [], '<HTML><B>CAT12</B>: Cortex, atlases, tissues', IconLoader.ICON_FEM, [], @(h,ev)bst_call(@process_segment_cat12, 'ComputeInteractive', iSubject, iAnatomy));
@@ -3128,10 +3167,10 @@ function fcnMriSegment(jPopup, sSubject, iSubject, iAnatomy, isAtlas)
         if isempty(iAnatomy)
             gui_component('MenuItem', jPopup, [], 'Deface anatomy', IconLoader.ICON_ANATOMY, [], @(h,ev)process_mri_deface('Compute', iSubject, struct('isDefaceHead', 1)));
         else
-            gui_component('MenuItem', jPopup, [], 'Deface volume', IconLoader.ICON_ANATOMY, [], @(h,ev)process_mri_deface('Compute', MriFile, struct('isDefaceHead', 0)));
+            gui_component('MenuItem', jPopup, [], 'Deface volume', IconLoader.(volIcon), [], @(h,ev)process_mri_deface('Compute', MriFile, struct('isDefaceHead', 0)));
         end
         % === SEEG/ECOG ===
-        if (length(iAnatomy) <= 1)
+        if (length(iAnatomy) <= 1) && iSubject ~=0
             gui_component('MenuItem', jPopup, [], 'SEEG/ECOG implantation', IconLoader.ICON_SEEG_DEPTH, [], @(h,ev)bst_call(@panel_ieeg, 'CreateNewImplantation', MriFile));
         end
           

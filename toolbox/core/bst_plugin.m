@@ -169,7 +169,6 @@ function PlugDesc = GetSupported(SelPlug)
     PlugDesc(end).DeleteFiles    = {'doc', 'tools', '.git_filters', 'sample', ...
                                     'bin/cgalmesh.exe', 'bin/cgalmesh.mexglx', 'bin/cgalmesh.mexmaci', ...
                                     'bin/cgalpoly.exe', 'bin/cgalpoly.mexglx', 'bin/cgalpoly.mexmaci', 'bin/cgalpoly.mexa64', 'bin/cgalpoly.mexmaci64', 'bin/cgalpoly_x86-64.exe', ...   % Removing cgalpoly completely (not used)
-                                    'bin/cgalsimp2.exe', 'bin/cgalsimp2.mexglx', 'bin/cgalsimp2.mexmaci', 'bin/cgalsimp2.mexmac', ...
                                     'bin/cgalsurf.exe', 'bin/cgalsurf.mexglx', 'bin/cgalsurf.mexmaci', ...
                                     'bin/cork.exe', ...
                                     'bin/gtsrefine.mexglx', 'bin/gtsrefine.mexmaci', 'bin/gtsrefine.mexarmhf', 'bin/gtsrefine.exe', 'bin/gtsrefine.mexmaci64', ...  % Removing gtsrefine completely (not used)
@@ -610,7 +609,7 @@ function PlugDesc = GetSupported(SelPlug)
     PlugDesc(end+1)              = GetStruct('fieldtrip');
     PlugDesc(end).Version        = 'latest';
     PlugDesc(end).AutoUpdate     = 0;
-    PlugDesc(end).URLzip         = 'https://download.fieldtriptoolbox.org/fieldtrip-lite-20220228.zip';
+    PlugDesc(end).URLzip         = 'https://download.fieldtriptoolbox.org/fieldtrip-lite-20240405.zip';
     PlugDesc(end).URLinfo        = 'http://www.fieldtriptoolbox.org';
     PlugDesc(end).TestFile       = 'ft_defaults.m';
     PlugDesc(end).ReadmeFile     = 'README';
@@ -2829,6 +2828,10 @@ function LinkCatSpm(Action)
         if isempty(PlugCat) || ~PlugCat.isLoaded
             error('Plugin CAT12 is not loaded.');
         end
+        % Return if installation is not complete yet (first load before installation ends)
+        if isempty(PlugCat.InstallDate)
+            return
+        end
         % Define source and target for the link
         if ~isempty(PlugCat.SubFolder)
             linkTarget = bst_fullfile(PlugCat.Path, PlugCat.SubFolder);
@@ -2883,6 +2886,6 @@ end
 %% ===== NOT SUPPORTED APPLE SILICON =====
 % Return list of plugins not supported on Apple silicon
 function pluginNames = PluginsNotSupportAppleSilicon()
-    pluginNames = {'brain2mesh', 'ct2mrireg', 'duneuro', 'iso2mesh', 'mcxlab-cl', 'mcxlab-cuda', ...
+    pluginNames = {'brain2mesh', 'duneuro', 'iso2mesh', 'mcxlab-cl', 'mcxlab-cuda', ...
                    'openmeeg', 'xdf'};
 end

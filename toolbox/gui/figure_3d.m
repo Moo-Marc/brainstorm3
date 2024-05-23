@@ -609,9 +609,24 @@ function FigureMouseUpCallback(hFig, varargin)
             
         % === SELECTING POINT ===
         elseif isSelectingCoordinates
-            % Selecting from Coordinates panel
-            if gui_brainstorm('isTabVisible', 'Coordinates')
-                panel_coordinates('SelectPoint', hFig);
+            % Selecting from Coordinates or iEEG panels
+            if gui_brainstorm('isTabVisible', 'Coordinates') || gui_brainstorm('isTabVisible', 'iEEG')
+                if gui_brainstorm('isTabVisible', 'iEEG')
+                    % For SEEG, making sure centroid calculation for plotting contacts is active
+                    [iTess, TessInfo, hFig, sSurf] = panel_surface('GetSurface', hFig, [], 'Other');
+                    if ~isempty(sSurf)
+                        iIsoSurf = find(cellfun(@(x) ~isempty(regexp(x, '_isosurface', 'match')), {sSurf.FileName}));
+                        if ~isempty(iIsoSurf)
+                            panel_coordinates('SelectPoint', hFig, 0, 1);
+                        else
+                            panel_coordinates('SelectPoint', hFig);
+                        end
+                    else
+                        panel_coordinates('SelectPoint', hFig);
+                    end
+                else
+                    panel_coordinates('SelectPoint', hFig);
+                end
             % Selecting fiducials linked with MRI viewer
             else
                 hView3DHeadFig = findobj(0, 'Type', 'Figure', 'Tag', 'View3DHeadFig', '-depth', 1);
@@ -820,7 +835,9 @@ function FigureMouseUpCallback(hFig, varargin)
                     % If there are intra electrodes defined, and if the channels are SEEG/ECOG: try to select the electrode in panel_ieeg
                     if ~isempty(GlobalData.DataSet(iDS).IntraElectrodes) && all(~cellfun(@isempty, {GlobalData.DataSet(iDS).Channel(iSelChan).Group}))
                         selGroup = unique({GlobalData.DataSet(iDS).Channel(iSelChan).Group});
+                        % Highlight the electrode and contacts
                         panel_ieeg('SetSelectedElectrodes', selGroup);
+                        panel_ieeg('SetSelectedContacts', SelChan);
                     end
                 end
             end
@@ -1168,6 +1185,20 @@ function FigureKeyPressedCallback(hFig, keyEvent)
                 % M : Jump to maximum
                 case 'm'
                     JumpMaximum(hFig);
+                % CTRL+P : Toggle point selection mode
+                case 'p'
+                    if ismember('control', keyEvent.Modifier)
+                        tmp = bst_get('PanelControls', 'Coordinates');
+                        if isempty(tmp)
+                            gui_brainstorm('ShowToolTab', 'Coordinates');
+                        end
+                        tmp = bst_get('PanelControls', 'iEEG');
+                        if ~isempty(tmp)
+                            gui_brainstorm('ShowToolTab', 'iEEG');
+                        end
+                        pause(0.01);
+                        panel_coordinates('SetSelectionState', ~panel_coordinates('GetSelectionState'));
+                    end
                 % CTRL+R : Recordings time series
                 case 'r'
                     if ismember('control', keyEvent.Modifier) && ~isempty(GlobalData.DataSet(iDS).DataFile) && ~strcmpi(FigureId.Modality, 'MEG GRADNORM')
@@ -1282,7 +1313,11 @@ function ResetView(hFig)
     % 2D LAYOUT: separate function
     if strcmpi(GlobalData.DataSet(iDS).Figure(iFig).Id.SubType, '2DLayout')
         GlobalData.DataSet(iDS).Figure(iFig).Handles.DisplayFactor = 1;
-        GlobalData.Preferences.TopoLayoutOptions.TimeWindow = abs(GlobalData.UserTimeWindow.Time(2) - GlobalData.UserTimeWindow.Time(1)) .* [-1, 1];
+        if ~getappdata(hFig, 'isStaticFreq')
+            GlobalData.Preferences.TopoLayoutOptions.FreqWindow = [GlobalData.UserFrequencies.Freqs(1), GlobalData.UserFrequencies.Freqs(end)];
+        else
+            GlobalData.Preferences.TopoLayoutOptions.TimeWindow = abs(GlobalData.UserTimeWindow.Time(2) - GlobalData.UserTimeWindow.Time(1)) .* [-1, 1];
+        end
         figure_topo('UpdateTopo2dLayout', iDS, iFig);
         return
     % 3D figures
@@ -1411,13 +1446,12 @@ function SetStandardView(hFig, viewNames)
     end
 end
 
-
 %% ===== GET COORDINATES =====
 function GetCoordinates(varargin)
     % Show Coordinates panel
     gui_show('panel_coordinates', 'JavaWindow', 'Get coordinates', [], 0, 1, 0);
-    % Start point selection
-    panel_coordinates('SetSelectionState', 1);
+    % Toggle point selection mode
+    panel_coordinates('SetSelectionState', ~panel_coordinates('GetSelectionState'));
 end
 
 
@@ -1605,6 +1639,10 @@ function DisplayFigurePopup(hFig)
             jItem = gui_component('MenuItem', jPopup, [], 'View sources', IconLoader.ICON_RESULTS, [], @(h,ev)bst_figures('ViewResults',hFig));
             jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_MASK));
         end
+        % === VIEW SPECTRUM ===
+        if strcmpi(FigureType, 'Topography') && strcmpi(GlobalData.DataSet(iDS).Figure(iFig).Id.SubType, '2DLayout') && getappdata(hFig, 'isStatic')
+            jItem = gui_component('MenuItem', jPopup, [], [Modality ' Spectrum'], IconLoader.ICON_SPECTRUM, [], @(h,ev)view_spectrum(TfFile, 'Spectrum'));
+        end
         % === VIEW PAC/TIME-FREQ ===
         if strcmpi(FigureType, 'Topography') && ~isempty(SelChan) && ~isempty(Modality) && (Modality(1) ~= '$')
             if ~isempty(strfind(TfFile, '_pac_fullmaps'))
@@ -1629,7 +1667,11 @@ function DisplayFigurePopup(hFig)
         TopoLayoutOptions = bst_get('TopoLayoutOptions');
         % Create menu
         jMenu = gui_component('Menu', jPopup, [], '2DLayout options', IconLoader.ICON_2DLAYOUT);
-        gui_component('MenuItem', jMenu, [], 'Set time window...', [], [], @(h,ev)figure_topo('SetTopoLayoutOptions', 'TimeWindow'));
+        if ~getappdata(hFig, 'isStatic')
+            gui_component('MenuItem', jMenu, [], 'Set time window...', [], [], @(h,ev)figure_topo('SetTopoLayoutOptions', 'TimeWindow'));
+        else
+            gui_component('MenuItem', jMenu, [], 'Set frequency window...', [], [], @(h,ev)figure_topo('SetTopoLayoutOptions', 'FreqWindow'));
+        end
         jItem = gui_component('CheckBoxMenuItem', jMenu, [], 'White background', [], [], @(h,ev)figure_topo('SetTopoLayoutOptions', 'WhiteBackground', ~TopoLayoutOptions.WhiteBackground));
         jItem.setSelected(TopoLayoutOptions.WhiteBackground);
         jItem = gui_component('CheckBoxMenuItem', jMenu, [], 'Show reference lines', [], [], @(h,ev)figure_topo('SetTopoLayoutOptions', 'ShowRefLines', ~TopoLayoutOptions.ShowRefLines));
@@ -1939,7 +1981,9 @@ function DisplayFigurePopup(hFig)
     
     % ==== MENU: GET COORDINATES ====
     if ~strcmpi(FigureType, 'Topography')
-        gui_component('MenuItem', jPopup, [], 'Get coordinates...', IconLoader.ICON_SCOUT_NEW, [], @GetCoordinates);
+        jItem = gui_component('checkboxmenuitem', jPopup, [], 'Get coordinates...', IconLoader.ICON_SCOUT_NEW, [], @GetCoordinates);
+        jItem.setSelected(panel_coordinates('GetSelectionState'));
+        jItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_P, KeyEvent.CTRL_MASK));
     end
     
     % ==== MENU: SNAPSHOT ====
@@ -2860,7 +2904,6 @@ function hGrid = PlotGrid(hFig, GridLoc, GridValues, GridInd, DataAlpha, DataLim
             'FaceVertexAlphaData', FaceAlpha);
     end
 end
-
 
 %% ===== PLOT 3D ELECTRODES =====
 function [hElectrodeGrid, ChanLoc] = PlotSensors3D(iDS, iFig, Channel, ChanLoc, TopoType) %#ok<DEFNU>
