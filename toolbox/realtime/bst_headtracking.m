@@ -112,7 +112,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     end
     
     %% ===== PREPARE SUBJECT and CONDITION: HEADPOINTS =====
-
+    % TODO What about when we say "no"?
     HPChannelFile = panel_realtime('AddHeadPoints', SubjectName, PosFile);
     HPChannelMat = in_bst_channel(HPChannelFile);
 
@@ -155,8 +155,10 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     T = trans(1:3, 4); %in meters
 
     % Display subject's head
+    % TODO: bug introduced on last update here, missing isubject
         % Update subject structure
-        sSubject = bst_get('Subject', iSubject);
+        sSubject = bst_get('Subject', SubjectName); 
+%         sSubject = bst_get('Subject', iSubject); SubjectName
     hFig = view_surface(sSubject.Surface(sSubject.iScalp).FileName);
     % Set view from the left
     figure_3d('SetStandardView', hFig, 'front');
