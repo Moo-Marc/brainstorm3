@@ -118,7 +118,7 @@ while 1
         end
         
         % Get new data
-        dat = panel_realtime('GetNextDataBuffer');
+        dat = panel_realtime('GetBufferData', true);
         if isempty(dat)
             % data transfer has stopped
             DataTransfer = 0;
@@ -145,7 +145,7 @@ end
 function sourceMap = CortexDisplayDemo(dat)
     global RTConfig
     % In this case we show the sources directly
-    Cmegdat = dat(RTConfig.iMEG,:);
+    Cmegdat = dat(RTConfig.iMeg,:);
     % Optimal number of fft samples is a power of 2
     NFFT = 2^nextpow2(RTConfig.BlockSamples);
     % Frequency bins onto which the FFT will be computed

@@ -129,7 +129,9 @@ function SetPreferences(OPTIONS)
     ctrl.jTextMovement.setText(num2str(OPTIONS.HeadMoveThresh));
     ctrl.jTextHighpass.setText(num2str(OPTIONS.HP));
     ctrl.jTextLowpass.setText(num2str(OPTIONS.LP));
-    ctrl.jTextFunction.setText(num2str(OPTIONS.FunctionName));
+    if isfield(OPTIONS, 'FunctionName')
+        ctrl.jTextFunction.setText(num2str(OPTIONS.FunctionName));
+    end
 end
 
 %% Create template
@@ -509,7 +511,7 @@ function InitializeRealtimeMeasurement(ReComputeHeadModel)
     iBufHeadLoc = iBufHeadLoc(iSortHlu);
     RTConfig.iBufHeadLoc = iBufHeadLoc(iSortHlu);
     % We don't apply gains to head loc channels (and following).
-    RTConfig.ChannelGains(iHeadLoc(1):end) = [];
+    RTConfig.ChannelGains(iHeadLocInBuf(1):end) = [];
     
     bst_progress('text', 'Checking data information');
     
@@ -739,6 +741,9 @@ function HeadPositionRaw = HeadLocalization()
     % TRANFORMATION: CTF COIL => ANATOMICAL NAS/LPA/RPA
     % Get the transformation for HPI head coordinates (POS file) to Brainstorm
     HeadPointsStudy = bst_get('StudyWithCondition', fullfile(char(ctrl.jTextCurSubject.getText()), 'HeadPoints'));
+    if isempty(HeadPointsStudy.Channel)
+        error('No headpoints found.  Use "Add Headpoints" button.');
+    end
     HPChannelFile = file_fullpath(HeadPointsStudy.Channel.FileName);
     HPChannelMat = in_bst_channel(HPChannelFile);
     % find existing headpoints and transformation
