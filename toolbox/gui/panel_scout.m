@@ -713,6 +713,58 @@ function CreateMenuInverse(jMenu)
 end
 
 
+%% ===== SET LOCATION CONSTRAINT =====
+function SetLocationConstraint(iScout, locationConstraint)
+    % Seleted scouts
+    if ~isempty(iScout)
+        SetSelectedScouts(iScout)
+    end
+    sScouts = GetSelectedScouts();
+    if isempty(sScouts)
+        return
+    end
+    % Set location constraint
+    switch lower(locationConstraint)
+        case 'surface'
+            regionArgument = '.S.';
+        case 'volume'
+            regionArgument = '.V.';
+        case 'deep brain'
+            regionArgument = '.D.';
+        case 'exclude'
+            regionArgument = '.X.';
+        otherwise
+            return
+    end
+    SetScoutRegion(regionArgument);
+end
+
+
+%% ===== SET ORIENTATION CONSTRAINT =====
+function SetOrientationConstraint(iScout, orientationConstraint)
+    % Seleted scouts
+    if ~isempty(iScout)
+        SetSelectedScouts(iScout)
+    end
+    sScouts = GetSelectedScouts();
+    if isempty(sScouts)
+        return
+    end
+    % Set orientation constraint
+    switch lower(orientationConstraint)
+        case 'constrained'
+            regionArgument = '..C.';
+        case 'unconstrained'
+            regionArgument = '..U';
+        case 'loose'
+            regionArgument = '..L';
+        otherwise
+            return
+    end
+    SetScoutRegion(regionArgument);
+end
+
+
 %% ===== UPDATE ATLAS LIST =====
 function UpdateAtlasList(sSurf)
     import org.brainstorm.list.*;
@@ -928,39 +980,11 @@ function CurrentFigureChanged_Callback(oldFig, hFig)
         GlobalData.CurrentScoutsSurface = '';
         return
     end
-    % Get surfaces in new figure
-    TessInfo = getappdata(hFig, 'Surface');
-    iTess = getappdata(hFig, 'iSurface');
-    if isempty(iTess) || isempty(TessInfo)
-        SurfaceFile = [];
-    else
-        SurfaceFile = TessInfo(iTess).SurfaceFile;
-    end
+    % Get scout surface in new figure
+    SurfaceFile = GetScoutSurface(hFig);
     % If the current surface didn't change: nothing to do
     if file_compare(GlobalData.CurrentScoutsSurface, SurfaceFile)
         return;
-    end
-    % If surface file is an MRI or fibers
-    if ~isempty(iTess) && ismember(lower(TessInfo(iTess).Name), {'anatomy', 'fibers'})
-        % By default: no attached surface
-        SurfaceFile = [];
-        % If there are some data associated with this file: get the associated scouts
-        if ~isempty(TessInfo(iTess).DataSource) && ~isempty(TessInfo(iTess).DataSource.FileName)
-            FileMat.SurfaceFile = [];
-            if strcmpi(TessInfo(iTess).DataSource.Type, 'Source')
-                FileMat = in_bst_results(TessInfo(iTess).DataSource.FileName, 0, 'SurfaceFile');
-            elseif strcmpi(TessInfo(iTess).DataSource.Type, 'Timefreq')
-                FileMat = in_bst_timefreq(TessInfo(iTess).DataSource.FileName, 0, 'SurfaceFile', 'DataFile', 'DataType');
-                if isempty(FileMat.SurfaceFile) && ~isempty(FileMat.DataFile) && strcmpi(FileMat.DataType, 'results')
-                    FileMat = in_bst_results(FileMat.DataFile, 0, 'SurfaceFile');
-                end
-            elseif strcmpi(TessInfo(iTess).DataSource.Type, 'HeadModel')
-                FileMat = in_bst_headmodel(TessInfo(iTess).DataSource.FileName, 0, 'SurfaceFile');
-            end
-            if ~isempty(FileMat.SurfaceFile) % && strcmpi(file_gettype(FileMat.SurfaceFile), 'cortex')
-                SurfaceFile = FileMat.SurfaceFile;
-            end
-        end
     end
     % Update current surface
     SetCurrentSurface(SurfaceFile);
@@ -1101,6 +1125,41 @@ function SetCurrentAtlas(iAtlas, isForced)
     % Close progress bar
     if isProgress
         bst_progress('stop');
+    end
+end
+
+
+%% ===== GET SCOUT SURFACE FOR FIGURE =====
+function SurfaceFile = GetScoutSurface(hFig)
+    % Get surface in new figure
+    TessInfo = getappdata(hFig, 'Surface');
+    iTess = getappdata(hFig, 'iSurface');
+    SurfaceFile = [];
+    if isempty(iTess) || isempty(TessInfo)
+        return
+    % If surface file is an MRI or fibers
+    elseif ismember(lower(TessInfo(iTess).Name), {'anatomy', 'fibers'})
+        % By default: no attached surface
+        SurfaceFile = [];
+        % If there are some data associated with this file: get the associated scouts
+        if ~isempty(TessInfo(iTess).DataSource) && ~isempty(TessInfo(iTess).DataSource.FileName)
+            FileMat.SurfaceFile = [];
+            if strcmpi(TessInfo(iTess).DataSource.Type, 'Source')
+                FileMat = in_bst_results(TessInfo(iTess).DataSource.FileName, 0, 'SurfaceFile');
+            elseif strcmpi(TessInfo(iTess).DataSource.Type, 'Timefreq')
+                FileMat = in_bst_timefreq(TessInfo(iTess).DataSource.FileName, 0, 'SurfaceFile', 'DataFile', 'DataType');
+                if isempty(FileMat.SurfaceFile) && ~isempty(FileMat.DataFile) && strcmpi(FileMat.DataType, 'results')
+                    FileMat = in_bst_results(FileMat.DataFile, 0, 'SurfaceFile');
+                end
+            elseif strcmpi(TessInfo(iTess).DataSource.Type, 'HeadModel')
+                FileMat = in_bst_headmodel(TessInfo(iTess).DataSource.FileName, 0, 'SurfaceFile');
+            end
+            if ~isempty(FileMat.SurfaceFile) % && strcmpi(file_gettype(FileMat.SurfaceFile), 'cortex')
+                SurfaceFile = FileMat.SurfaceFile;
+            end
+        end
+    else
+        SurfaceFile = TessInfo(iTess).SurfaceFile;
     end
 end
 
@@ -4003,7 +4062,7 @@ function ExpandWithCorrelation(varargin)
 end
 
 %% ===== NEW SURFACE: FROM SELECTED SCOUTS =====
-function NewSurface(isKeep)
+function NewTessFile = NewSurface(isKeep)
     % === GET VERTICES TO REMOVE ===
     % Get selected scouts
     [sScouts, iScouts, sSurf] = GetSelectedScouts();
@@ -4053,8 +4112,10 @@ function NewSurface(isKeep)
     [sSubject, iSubject] = bst_get('SurfaceFile', sSurf.FileName);
     % Register this file in Brainstorm database
     db_add_surface(iSubject, NewTessFile, sSurfNew.Comment);
-    % Re-open one to show the modifications
-    view_surface(NewTessFile);
+    if nargout == 0
+        % Re-open one to show the modifications
+        view_surface(NewTessFile);
+    end
 end
 
 %% ===== EXPORT SCOUTS TO MATLAB =====
@@ -4410,9 +4471,9 @@ function PlotScouts(iScouts, hFigSel)
                 continue;
             end
             % Skip the display of the scouts that are on a hidden half of the cortex (for struct atlas)
-            if isequal(sSurface.Resect, 'left') && ~isempty(sScouts(i).Region) && (sScouts(i).Region(1) == 'R')
+            if isequal(sSurface.Resect{2}, 'left') && ~isempty(sScouts(i).Region) && (sScouts(i).Region(1) == 'R')
                 continue;
-            elseif isequal(sSurface.Resect, 'right') && ~isempty(sScouts(i).Region) && (sScouts(i).Region(1) == 'L')
+            elseif isequal(sSurface.Resect{2}, 'right') && ~isempty(sScouts(i).Region) && (sScouts(i).Region(1) == 'L')
                 continue;
             end
             % Get indice of the target figure in the sScouts.Handles array
@@ -4752,7 +4813,7 @@ function ReloadScouts(hFig)
     % Plot all scouts again
     PlotScouts([], hFig);
     % Update selected/displayed scouts
-    UpdateScoutsDisplay(hFig);
+    UpdateScoutsDisplay('current');
 end
 
 
@@ -4950,13 +5011,9 @@ function UpdateScoutsDisplay(target)
     % Get target scouts
     if ~ischar(target)
         hFigTarget = target;
-        TessInfo = getappdata(hFigTarget, 'Surface');
-        iTess = getappdata(hFigTarget, 'iSurface');
-        if isempty(TessInfo) || isempty(iTess)
+        SurfaceFile = GetScoutSurface(hFigTarget);
+        if isempty(SurfaceFile)
             hFigTarget = [];
-            SurfaceFile = [];
-        else
-            SurfaceFile = TessInfo(iTess).SurfaceFile;
         end
     elseif strcmpi(target, 'all')
         SurfaceFile = [];

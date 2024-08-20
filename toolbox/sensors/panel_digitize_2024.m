@@ -91,7 +91,6 @@ function Start()
     % ===== CREATE CONDITION =====
     % Get current date
     CurrentDate = char(datetime('now'), 'yyyyMMdd');
-    % c = clock;
     % Condition name: PatientId_Date_Run
     for i = 1:99
         % Generate new condition name
@@ -164,7 +163,10 @@ function [bstPanelNew, panelName] = CreatePanel()
     jPanelMenu = gui_component('panel');
     jMenuBar = java_create('javax.swing.JMenuBar');
     jPanelMenu.add(jMenuBar, BorderLayout.NORTH);
-    jLabelNews = gui_component('label', jPanelMenu, BorderLayout.CENTER, 'Digitize version 2024.  To go back to original version: File > Switch to old...  See Help.', [], [], [], fontSize);
+    jLabelNews = gui_component('label', jPanelMenu, BorderLayout.CENTER, ...
+                               ['<HTML><div align="center"><b>Digitize version: "2024"</b></div>' ...
+                                '&bull To go back to previous version: <i>File > Switch to Digitize "legacy"</i> &#8198&#8198' ...
+                                '&bull More details: <i>Help > Digitize tutorial</i>'], [], [], [], fontSize);
     jLabelNews.setHorizontalAlignment(SwingConstants.CENTER);
     jLabelNews.setOpaque(true);
     jLabelNews.setBackground(java.awt.Color.yellow);
@@ -173,7 +175,7 @@ function [bstPanelNew, panelName] = CreatePanel()
     jMenu = gui_component('Menu', jMenuBar, [], 'File', [], [], [], []);
     gui_component('MenuItem', jMenu, [], 'Start over', IconLoader.ICON_RELOAD, [], @(h,ev)bst_call(@ResetDataCollection, 1), []);
     gui_component('MenuItem', jMenu, [], 'Edit settings...', IconLoader.ICON_EDIT, [], @(h,ev)bst_call(@EditSettings), []);
-    gui_component('MenuItem', jMenu, [], 'Switch to old Digitize version', [], [], @(h,ev)bst_call(@SwitchVersion), []);
+    gui_component('MenuItem', jMenu, [], 'Switch to Digitize "legacy"', [], [], @(h,ev)bst_call(@SwitchVersion), []);
     gui_component('MenuItem', jMenu, [], 'Reset serial connection', IconLoader.ICON_FLIP, [], @(h,ev)bst_call(@CreateSerialConnection), []);
     jMenu.addSeparator();
     if exist('bst_headtracking', 'file')
@@ -217,7 +219,7 @@ function [bstPanelNew, panelName] = CreatePanel()
     
     % ===== Other buttons =====
     jPanelMisc = gui_river([5,4], [10,4,4,4]);
-        gui_component('button', jPanelMisc, 'br', 'Collect point', [], [], @(h,ev)bst_call(@ManualCollect_Callback));
+        jButtonCollectPoint = gui_component('button', jPanelMisc, 'br', 'Collect point', [], [], @(h,ev)bst_call(@ManualCollect_Callback));
         % Until initial fids are collected and figure displayed, "delete" button is used to "restart".
         jButtonDeletePoint = gui_component('button', jPanelMisc, [], 'Start over', [], [], @(h,ev)bst_call(@ResetDataCollection, 1));
         gui_component('label', jPanelMisc, 'hfill', ''); % spacing 
@@ -246,6 +248,7 @@ function [bstPanelNew, panelName] = CreatePanel()
                   'jLabelWarning',         jLabelWarning, ...
                   'jListCoord',            jListCoord, ...
                   'jTextFieldExtra',       jTextFieldExtra, ...
+                  'jButtonCollectPoint',   jButtonCollectPoint, ...
                   'jButtonDeletePoint',    jButtonDeletePoint);
     bstPanelNew = BstPanel(panelName, jPanelNew, ctrl);
 end
@@ -253,7 +256,7 @@ end
 %% ===== SWITCH to old version =====
 function SwitchVersion()
     % Always confirm this switch.
-    if ~java_dialog('confirm', ['<HTML>Switch to original version of the Digitize panel?<BR>', ...
+    if ~java_dialog('confirm', ['<HTML>Switch to legacy version of the Digitize panel?<BR>', ...
             'See Digitize tutorial (Digitize panel > Help menu).<BR>', ...
             '<B>This will close the window. Any unsaved points will be lost.</B>'], 'Digitize version')
         return;
@@ -262,10 +265,8 @@ function SwitchVersion()
     Close_Callback();
     % Save the preferred version. Must be after closing
     DigitizeOptions = bst_get('DigitizeOptions');
-    DigitizeOptions.Version = 'original';
+    DigitizeOptions.Version = 'legacy';
     bst_set('DigitizeOptions', DigitizeOptions);
-    % Start the other panel
-    %bst_call(@panel_digitize, 'Start');
 end
 
 %% ===== CLOSE =====
@@ -527,6 +528,8 @@ end
 %% ===== MANUAL COLLECT CALLBACK ======
 function ManualCollect_Callback()
     global Digitize
+    ctrl = bst_get('PanelControls', 'Digitize');
+    ctrl.jButtonCollectPoint.setEnabled(0);
     % Simulation: call the callback directly
     if Digitize.Options.isSimulate
         BytesAvailable_Callback();
@@ -536,6 +539,7 @@ function ManualCollect_Callback()
         writeline(Digitize.SerialConnection,'P');
         pause(0.2);
     end
+    ctrl.jButtonCollectPoint.setEnabled(1);
 end
 
 %% ===== DELETE POINT CALLBACK =====
@@ -669,8 +673,7 @@ function PlotCoordinate(isAdd) %(Loc, Label, Type, iPoint)
     hHeadPointsLabels  = findobj(hAxes, 'Tag', 'HeadPointsLabels');
     delete(hHeadPointsMarkers);
     delete(hHeadPointsLabels);
-    % If all EEG were removed, ViewSensors won't remove the last remaining (first) EEG from the
-    % figure, so do it manually.
+    % If all EEG were removed, ViewSensors won't remove the last remaining (first) EEG from the figure, so do it manually.
     if isempty(GlobalData.DataSet(Digitize.iDS).Channel)
         hSensorMarkers = findobj(hAxes, 'Tag', 'SensorsMarkers');
         hSensorLabels  = findobj(hAxes, 'Tag', 'SensorsLabels');
@@ -679,8 +682,7 @@ function PlotCoordinate(isAdd) %(Loc, Label, Type, iPoint)
     end
     % View all points in the channel file
     figure_3d('ViewHeadPoints', Digitize.hFig, 1);
-    % This would give error if the channel structure is not truely empty: db_template creates
-    % effectively 1 channel with empty fields.
+    % This would give error if the channel structure is not truely empty: db_template creates effectively 1 channel with empty fields.
     if ~isempty(GlobalData.DataSet(Digitize.iDS).Channel) && ~isempty(GlobalData.DataSet(Digitize.iDS).Channel(1).Name)
         figure_3d('ViewSensors', Digitize.hFig, 1, 1, 0, 'EEG');
     end
@@ -714,8 +716,8 @@ function SaveDigitizeChannelFile()
     sStudy = bst_get('StudyWithCondition', [Digitize.SubjectName '/' Digitize.ConditionName]);
     ChannelFile = file_fullpath(sStudy.Channel.FileName);
     ChannelMat = load(ChannelFile);
-    % GlobalData may not exist here: before 3d figure is created or after it is closed. So fill in
-    % ChannelMat from Digitize.Points.
+    % GlobalData may not exist here: before 3d figure is created or after it is closed.
+    % So fill in ChannelMat from Digitize.Points.
     iHead = 0;
     iChan = 0;
     % Reset points
@@ -876,7 +878,7 @@ function AddMontage()
     Digitize.Options.Montages(iMontage) = newMontage;
     Digitize.Options.iMontage = iMontage;
     % Save options
-    bst_set('Digitize.Options', Digitize.Options);
+    bst_set('DigitizeOptions', Digitize.Options);
     % Reload Menu
     CreateMontageMenu();
     % Restart acquisition
@@ -895,7 +897,7 @@ function UnloadAllMontages()
     % Reset to "No EEG"
     Digitize.Options.iMontage = 1;
     % Save Digitize options
-    bst_set('Digitize.Options', Digitize.Options);
+    bst_set('DigitizeOptions', Digitize.Options);
     % Reload menu bar
     CreateMontageMenu();
 end
@@ -919,7 +921,6 @@ function isOk = CreateSerialConnection()
             % Delete previous connection.
             if ~isempty(Digitize.SerialConnection)
                 delete(Digitize.SerialConnection);
-                %Digitize.SerialConnection = []; % cleaner than "handle to deleted serialport".
             end
             % Create the serial port connection and store in global variable.
             Digitize.SerialConnection = serialport(Digitize.Options.ComPort, Digitize.Options.ComRate);
