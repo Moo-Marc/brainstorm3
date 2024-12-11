@@ -710,8 +710,8 @@ function UpdateComp()
     [sCat, iCat] = GetSelectedCat();
     % If there is something selected: Add components
     if ~isempty(sCat)
-        componentType = sCat.Method(1:3);
         if (length(sCat.CompMask) > 1)
+            componentType = sCat.Method(1:3);
             switch lower(componentType)
                 % ICA: Show all components
                 case 'ica'
@@ -798,7 +798,8 @@ function SaveFigureAsSsp(hFig, UseDirectly) %#ok<DEFNU>
     Components = Components ./ sqrt(sum(Components .^2));
     % Build projector structure
     sProj = db_template('projector');
-    sProj.Comment    = sprintf( '%s: %s (%0.3fs)', Modality, FileName, GlobalData.UserTimeWindow.CurrentTime);
+    sProj.Method     = 'SSP_pca';
+    sProj.Comment    = sprintf( 'SSP_pca: %s: %s (%0.3fs)', Modality, FileName, GlobalData.UserTimeWindow.CurrentTime);
     sProj.Components = Components;
     sProj.CompMask   = 1;
     sProj.Status     = 1;
