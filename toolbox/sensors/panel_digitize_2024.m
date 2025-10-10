@@ -407,7 +407,7 @@ function [bstPanelNew, panelName] = CreatePanel()
     %  === INTERNAL CALLBACKS  =========================================================
     %  =================================================================================
     %% ===== COORDINATE LIST KEY TYPED CALLBACK =====
-    function CoordListKeyTyped_Callback(h, ev)
+    function CoordListKeyTyped_Callback(~, ev)
         switch(uint8(ev.getKeyChar()))
             % Delete
             case {ev.VK_DELETE, ev.VK_BACK_SPACE}
@@ -433,7 +433,7 @@ function [bstPanelNew, panelName] = CreatePanel()
     end
     
     %% ===== COORDINATE LIST CLICK CALLBACK =====
-    function CoordListClick_Callback(h, ev)
+    function CoordListClick_Callback(~, ev)
         % If single click
         if (ev.getClickCount() == 1)
             ctrl = bst_get('PanelControls', 'Digitize');
@@ -452,7 +452,7 @@ end
 
 %% ===== GET SELECTED ELECTRODE =====
 function [sCoordName, iSelCoord] = GetSelectedCoord()
-    global Digitize
+    % global Digitize
     % Get panel handles
     ctrl = bst_get('PanelControls', 'Digitize');
     if isempty(ctrl)
@@ -500,7 +500,7 @@ function isAccepted = PanelHidingCallback()
         jBstFrame.setVisible(1);
     end
     % Get study
-    [sStudy, iStudy] = bst_get('StudyWithCondition', [Digitize.SubjectName '/' Digitize.ConditionName]);
+    [~, iStudy] = bst_get('StudyWithCondition', [Digitize.SubjectName '/' Digitize.ConditionName]);
     % If nothing was clicked: delete the condition that was just created
     if isempty(Digitize.Transf)
         % Delete study
@@ -563,9 +563,9 @@ function isOk = EditSettings()
     % Options to show for each type
     switch lower(Digitize.Type)     
         case 'digitize'
-            iOptionsType = [1:7];
+            iOptionsType = 1:7;
         case '3dscanner'
-            iOptionsType = [4:7];
+            iOptionsType = 4:7;
     end
     
     % Ask options
@@ -577,7 +577,7 @@ function isOk = EditSettings()
     % Results from options asked to user
     options_all(iOptionsType, 3) = resType;
     % Results from options not asked to user
-    iOptionsKeep = setdiff([1:length(options_all)], iOptionsType);
+    iOptionsKeep = setdiff(1:length(options_all), iOptionsType);
     options_all(iOptionsKeep, 3) = options_all(iOptionsKeep,2);
     res = options_all(:,3);
 
@@ -783,7 +783,7 @@ end
 
 %% ===== 3DSCANNER: AUTOMATICALLY DETECT AND LABEL EEG CAP ELECTRODES =====
 function EEGAutoDetectElectrodes()
-    global Digitize GlobalData
+    global Digitize % GlobalData
 
     % Add disclaimer to users that 'Auto' feature is experimental
     if ~java_dialog('confirm', ['<HTML> Automatic detection of EEG sensors is an <B>experimental</B> feature. <BR>' ...
@@ -973,7 +973,7 @@ function DeletePoint_Callback()
     end
     % Decrement head shape point count
     if strcmpi(Digitize.Points(Digitize.iPoint).Type, 'EXTRA')
-        nShapePts = str2num(ctrl.jTextFieldExtra.getText());
+        nShapePts = str2double(ctrl.jTextFieldExtra.getText());
         ctrl.jTextFieldExtra.setText(num2str(max(0, nShapePts - 1)));
     end
 
@@ -1368,9 +1368,9 @@ function AddMontage(ChannelFile)
         eegCapLandmarkLabels = channel_detect_eegcap_auto('GetEegCapLandmarkLabels', newMontage.Name);
 
         % Sort as per the initialization landmark labels of EEG Cap  
-        nonLandmarkLabelsIdx = find(~ismember({ChannelMat.Channel.Name},eegCapLandmarkLabels));
+        isNonLandmarkLabelsIdx = ~ismember({ChannelMat.Channel.Name},eegCapLandmarkLabels);
         allLabels = {ChannelMat.Channel.Name};
-        newMontage.Labels = cat(2, eegCapLandmarkLabels, allLabels(nonLandmarkLabelsIdx));
+        newMontage.Labels = cat(2, eegCapLandmarkLabels, allLabels(isNonLandmarkLabelsIdx));
     end
     
     % Get existing montage with the same name
@@ -1700,7 +1700,7 @@ function BytesAvailable_Callback(h, ev) %#ok<INUSD>
             eegCapLandmarkLabels = channel_detect_eegcap_auto('GetEegCapLandmarkLabels', Digitize.Options.Montages(Digitize.Options.iMontage).Name);
             if ~isempty(eegCapLandmarkLabels)
                 acqPoints = Digitize.Points(~cellfun(@isempty, {Digitize.Points.Loc}));
-                if all(ismember([eegCapLandmarkLabels], {acqPoints.Label}))
+                if all(ismember(eegCapLandmarkLabels, {acqPoints.Label}))
                     ctrl.jButtonEEGAutoDetectElectrodes.setEnabled(1);
                 end
             end
