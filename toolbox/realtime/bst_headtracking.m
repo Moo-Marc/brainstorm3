@@ -158,7 +158,7 @@ function bst_headtracking(isRealtimeAlign, hostIP, hostPort, PosFile)
     % TODO: bug introduced on last update here, missing isubject
         % Update subject structure
         sSubject = bst_get('Subject', SubjectName); 
-%         sSubject = bst_get('Subject', iSubject); SubjectName
+        % sSubject = bst_get('Subject', iSubject); SubjectName
     hFig = view_surface(sSubject.Surface(sSubject.iScalp).FileName);
     % Set view from the left
     figure_3d('SetStandardView', hFig, 'front');

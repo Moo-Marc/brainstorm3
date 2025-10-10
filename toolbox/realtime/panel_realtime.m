@@ -357,8 +357,9 @@ end
 
 % Also called by bst_headtracking
 function hdr = InitFieldtripBuffer(ft_host, ft_port)
-    % Initialize FieldTrip
-    [isInstalled, errMsg, PlugFt] = bst_plugin('Install', 'fieldtrip');
+    % Initialize FieldTrip. Can't use 'install' here since it would get the
+    % "lite" version and we need the full with realtime.
+    [isInstalled, errMsg, PlugFt] = bst_plugin('Load', 'fieldtrip');
     if ~isInstalled
         error('FieldTrip plugin required (full version, not lite which Brainstorm would get by default). %s', errMsg);
     end
@@ -445,7 +446,7 @@ function hdr = InitFieldtripBuffer(ft_host, ft_port)
         try
             hdr = buffer('get_hdr', [], ft_host, ft_port);
         catch ME
-            disp('Unable to get header from buffer at provided IP. \nBuffer should be initialized first. \nA firewall could block access and cause this error.');
+            disp('Unable to get header from buffer at provided IP. Buffer should be initialized first. A firewall could block access and cause this error.');
             rethrow(ME);
         end
     end

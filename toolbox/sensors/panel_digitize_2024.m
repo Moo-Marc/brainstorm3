@@ -637,9 +637,12 @@ function isOk = EditSettings()
     bst_set('DigitizeOptions', Digitize.Options);
     isOk = 1;
 
-    % If no points collected, reset.
+    % If no points collected and panel created, reset.
     if isempty(Digitize.Points) || ~isfield(Digitize.Points, 'Loc') || isempty(Digitize.Points(1).Loc)
-        ResetDataCollection(1);
+        ctrl = bst_get('PanelControls', 'Digitize');
+        if ~isempty(ctrl)
+            ResetDataCollection(1);
+        end
     end
 end
 
