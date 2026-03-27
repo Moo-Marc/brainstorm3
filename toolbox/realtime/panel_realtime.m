@@ -177,12 +177,12 @@ function RTConfig = GetTemplate()
 end
 
 %% Prepare subject
-function RegisterSubject_Callback(h, ev)
+function RegisterSubject_Callback(~, ~)
     % Get panel controls
     ctrl = bst_get('PanelControls', 'Realtime');
     % Get subject
     SubjectName = char(ctrl.jTextCurSubject.getText());
-    [tmp, iSubject] = bst_get('Subject', SubjectName);
+    [~, iSubject] = bst_get('Subject', SubjectName);
 
     % Check if subject exists
     if ~isempty(iSubject)
@@ -206,7 +206,7 @@ function RegisterSubject_Callback(h, ev)
     end
     
     % ===== Create new subject
-    [tmp, iSubject] = db_add_subject(SubjectName, [], 1, 0);
+    [~, iSubject] = db_add_subject(SubjectName, [], 1, 0);
     sTemplate = bst_get('AnatomyDefaults', 'ICBM152');
     db_set_template( iSubject, sTemplate(1), 0 )
     
@@ -227,7 +227,7 @@ function RegisterSubject_Callback(h, ev)
 end
 
 %% Add HeadPoints to condition
-function AddHeadPoints_Callback(h, ev)
+function AddHeadPoints_Callback(~, ~)
     % Get panel controls
     ctrl = bst_get('PanelControls', 'Realtime');
     SubjectName = char(ctrl.jTextCurSubject.getText());
@@ -346,7 +346,7 @@ function HPChannelFile = AddHeadPoints(SubjectName, PosFile)
 end
 
 %% Initialize Fieldtrip Buffer
-function InitFieldtripBuffer_Callback(h, ev)
+function InitFieldtripBuffer_Callback(~, ~)
 
     % Get panel controls
     ctrl = bst_get('PanelControls', 'Realtime');
@@ -408,7 +408,7 @@ function hdr = InitFieldtripBuffer(ft_host, ft_port)
     %         %             end
     %         %         end
     %     end
-    hdr = [];
+    hdr = []; %#ok<NASGU>
     if strcmpi(ft_host, 'localhost')
         % ===== Initialize the buffer
         try
@@ -454,7 +454,7 @@ function hdr = InitFieldtripBuffer(ft_host, ft_port)
 end
 
 %% Start Collection
-function StartRealtime_Callback(h,ev)
+function StartRealtime_Callback(~, ~)
     ctrl = bst_get('PanelControls', 'Realtime');    
     if ctrl.jRadioCortexDisplay.isSelected()
         realtime_demo();
@@ -679,7 +679,7 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     % sent to the buffer.  So we need to filter by channel names. But we also
     % need all MEG channels to display the helmet.
     % Channel file indices of channels present in the buffer
-    [Unused, ChannelTypes.iChanInBuf] = ismember(hdr.channel_names, {ChannelMat.Channel.Name});
+    [~, ChannelTypes.iChanInBuf] = ismember(hdr.channel_names, {ChannelMat.Channel.Name});
     % Channel file indices of all MEG channels 
     ChannelTypes.iMegFull = good_channel(ChannelMat.Channel, [], 'MEG');
     % Channel file indices of MEG channels in the buffer
@@ -687,7 +687,7 @@ function [ChannelMat, ChannelTypes, ChannelGains] = ReadBufferRes4(ft_host, ft_p
     % Channel file indices of MEG REF channels in the buffer
     ChannelTypes.iMegRef = good_channel(ChannelMat.Channel, [], 'MEG REF');
     % Full MegRefCoef matrix indices for MEG channels in the buffer
-    [Unused, iMegCoefs] = ismember(ChannelTypes.iMeg, ChannelTypes.iMegFull);
+    [~, iMegCoefs] = ismember(ChannelTypes.iMeg, ChannelTypes.iMegFull);
     % Buffer indices for MEG channels
     ChannelTypes.iBufMeg = good_channel(ChannelMat.Channel(ChannelTypes.iChanInBuf), [], 'MEG');
     % Buffer indices for MEG REF channels
