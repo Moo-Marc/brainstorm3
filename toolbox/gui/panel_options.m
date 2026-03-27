@@ -65,6 +65,7 @@ function [bstPanelNew, panelName] = CreatePanel() %#ok<DEFNU>
         if isCompiled
             jCheckCrossPlatformJLF = gui_component('CheckBox', jPanelSystem, 'br', 'Use cross platform Java Look and Feel', [], [], []);
         end
+        jCheckProcessTooltip = gui_component('CheckBox', jPanelSystem, 'br', 'Show process path as tooltip in Pipeline editor', [], [], []);
     jPanelLeft.add('hfill', jPanelSystem);
     % ===== LEFT: OPEN GL =====
     jPanelOpengl = gui_river([5 2], [0 15 8 15], 'OpenGL rendering');
@@ -217,6 +218,7 @@ function [bstPanelNew, panelName] = CreatePanel() %#ok<DEFNU>
                     jRadioOpenSoft.setSelected(1);
                 end
         end
+        jCheckProcessTooltip.setSelected(bst_get('ShowProcessTooltip'));
         % Interface scaling
         switch (bst_get('InterfaceScaling'))
             case 100,       jSliderScaling.setValue(1);
@@ -298,6 +300,12 @@ function [bstPanelNew, panelName] = CreatePanel() %#ok<DEFNU>
         if isCompiled
             changedJLF = bst_get('UseCrossPlatformJLF') ~= jCheckCrossPlatformJLF.isSelected();
             bst_set('UseCrossPlatformJLF', jCheckCrossPlatformJLF.isSelected());
+        end
+        % ===== CLEAR PROCESS MENU CACHE =====
+        if bst_get('ShowProcessTooltip') ~= jCheckProcessTooltip.isSelected()
+            % Clear menu cache
+            GlobalData.Program.ProcessMenuCache = struct();
+            bst_set('ShowProcessTooltip',  jCheckProcessTooltip.isSelected());
         end
 
         % ===== INTERFACE SCALING =====
@@ -556,11 +564,47 @@ function [isOpenGL, DisableOpenGL] = StartOpenGL()
             if strcmp(s.GraphicsRenderer,  'OpenGL Hardware')
                 isOpenGL = 1;
                 s.Software = 0;
+                if (DisableOpenGL == 2)
+                    if isunix
+                        isUnixWarning = 1;
+                        DisableOpenGL = 0;
+                        bst_set('DisableOpenGL', DisableOpenGL);
+                    elseif ispc
+                        try
+                            opengl('software');
+                            s = rendererinfo();
+                            s.Software = 1;
+                        catch
+                            isOpenGL = 0;
+                        end
+                    end
+                end
             elseif strcmp(s.GraphicsRenderer,  'OpenGL Software')
                 isOpenGL = 1;
                 s.Software = 1;
+                if (DisableOpenGL == 0)
+                    if isunix
+                        isUnixWarning = 1;
+                        DisableOpenGL = 2;
+                        bst_set('DisableOpenGL', DisableOpenGL);
+                    elseif ispc
+                        try
+                            opengl('hardware');
+                            s = rendererinfo();
+                            s.Software = 0;
+                        catch
+                            isOpenGL = 0;
+                        end
+                    end
+                end
             else
                 isOpenGL = 0;
+            end
+            % Configure OpenGL
+            switch DisableOpenGL
+                case 0,  FigureRenderer = 'opengl';
+                case 1,  FigureRenderer = 'painters';
+                case 2,  FigureRenderer = 'opengl';
             end
             % Figure types for which the OpenGL renderer is used
             figTypes = {'DataTimeSeries', 'ResultsTimeSeries', 'Spectrum', '3DViz', 'Topography', 'MriViewer', 'Timefreq', 'Pac', 'Image'};

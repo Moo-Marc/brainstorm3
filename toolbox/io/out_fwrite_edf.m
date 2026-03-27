@@ -25,7 +25,7 @@ function out_fwrite_edf(sFile, sfid, SamplesBounds, ChannelsRange, F)
 % ===== PARSE INPUTS =====
 [nSignals, nSamples] = size(F);
 if isempty(SamplesBounds)
-    SamplesBounds = [0, nSamples];
+    SamplesBounds = round(sFile.prop.times .* sFile.prop.sfreq);
 end
 if isempty(ChannelsRange)
     ChannelsRange = [1, nSignals];
@@ -52,7 +52,8 @@ if sFile.header.annotchan >= 0
     nAnnots        = numel(sFile.header.annotations);
     nSamplesReal   = round((sFile.prop.times(2) - sFile.prop.times(1)) .* sFile.prop.sfreq);
     nSamplesAnnots = sFile.header.signal(sFile.header.annotchan).nsamples;
-    annotThreshold = floor((1:nAnnots) / nAnnots * nSamplesReal);
+    nSamplesOffset = round(sFile.prop.times(1) .* sFile.prop.sfreq);
+    annotThreshold = nSamplesOffset + floor((1:nAnnots) / nAnnots * nSamplesReal);
     annotBounds    = [0, 0];
     
     % Insert annotation in this record only if it contains the required
@@ -80,7 +81,7 @@ end
 
 % Write to file record per record
 nSamplesPerRecord = sFile.prop.sfreq * sFile.header.reclen;
-nRecords          = ceil((SamplesBounds(2) - SamplesBounds(1)) / nSamplesPerRecord);
+nRecords          = ceil(nSamples / nSamplesPerRecord);
 ncount            = 0;
 bounds            = [1, nSamplesPerRecord];
 timeOffset        = SamplesBounds(1) / sFile.prop.sfreq;
@@ -110,10 +111,7 @@ for iRec = 1:nRecords
     % Write annotations if any, split by records
     if annotations
         bytesLeft = nSamplesAnnots * 2;
-        
-        % The first annotation specifies the time offset
-        bytesLeft = bytesLeft - fprintf(sfid, '+%f%c%c%c', timeOffset, char(20), char(20), char(0));
-        
+        % Annotations in header are already relative to start of EDF file (0s)
         % Write as many annotations as possible in current record
         while nextAnnot <= nAnnots && bytesLeft >= length(annotsList{nextAnnot})
             bytesLeft = bytesLeft - fprintf(sfid, '%s', annotsList{nextAnnot});

@@ -109,17 +109,16 @@ if ~isempty(Method)
 
         % ===== METHOD: SPM ALIGN =====
         case 'spm_realign'
-            if ~bst_iscompiled
-                % Initialize SPM
-                [isInstalled, errMsg] = bst_plugin('Install', 'spm12');
-                if ~isInstalled
-                    if ~isProgress
-                        bst_progress('stop');
-                    end
-                    return;
+            % Initialize SPM
+            [isInstalled, errMsg] = bst_plugin('Install', 'spm12');
+            if ~isInstalled
+                if ~isProgress
+                    bst_progress('stop');
                 end
+                error(errMsg);
+                return;
             end
-            bst_plugin('SetProgressLogo', 'spm12');
+            bst_progress('setpluginlogo', 'spm12');
     
             % === CALL SPM REALIGN ===
             bst_progress('text', sprintf('Aligning %d frames using SPM Realign...', nFrames));
@@ -173,6 +172,8 @@ if ~isempty(Method)
             spm('defaults', 'PET');
             spm_jobman('run', matlabbatch);
             sMriAlign = in_mri(MriFileRealign, 'Nifti1', 0, 0, 1);  % Import the realigned dynamic volume
+            % Remove logo
+            bst_progress('removeimage');
     end
 
     % ===== UPDATE HISTORY ========

@@ -65,8 +65,12 @@ function [hFig, Handles] = CreateFigure(FigureId) %#ok<DEFNU>
         rendererName = 'opengl';
     end
     % Disable the Java-related warnings after 2019b
-    if (bst_get('MatlabVersion') >= 907)
+    % MATLAB >= 2019b and MATLAB <= 2024b
+    if (bst_get('MatlabVersion') >= 907 && bst_get('MatlabVersion') <= 2402)
         warning('off', 'MATLAB:ui:javacomponent:FunctionToBeRemoved');
+    % MATLAB >= 2025a
+    elseif (bst_get('MatlabVersion') >= 2501)
+        warning('off', 'MATLAB:ui:javacomponent:BridgeForWebFigures');
     end
     
     % ===== FIGURE =====
@@ -1582,6 +1586,8 @@ end
 %% ===== MOUSE CLICK: FIGURE =====
 function MouseButtonDownFigure_Callback(hFig, sMri, Handles)
     global GlobalData;
+    % Hide jPopupMenu
+    bst_figures('HideJPopupMenu', hFig);
     % Get clicked axes
     hObj = get(hFig,'CurrentObject');
     if isempty(hObj)
@@ -3028,9 +3034,17 @@ end
 
 
 %% ===== APPLY COORDINATES TO ALL FIGURES =====
-function ApplyCoordsToAllFigures(hSrcFig, cs)
+function ApplyCoordsToAllFigures(hSrcFig, cs, onlySameDS)
+    if nargin < 3 || isempty(onlySameDS)
+        onlySameDS = 0;
+    end
     % Get all figures
-    hAllFig = bst_figures('GetFiguresByType', {'MriViewer'});
+    [hAllFig, ~, iAllDS] = bst_figures('GetFiguresByType', {'MriViewer'});
+    % Apply only to MRI viewers for same DS
+    if onlySameDS
+        [~,~,iDS] = bst_figures('GetFigure', hSrcFig);
+        hAllFig = hAllFig(iAllDS == iDS);
+    end
     hAllFig = setdiff(hAllFig, hSrcFig);
     % Get MRI and Handles
     srcMri = panel_surface('GetSurfaceMri', hSrcFig);
@@ -3273,13 +3287,13 @@ function SetVolumeAtlas(hFig, AnatAtlas)
 end
 
 
-%% ===== iEEG: UPDATE OTHER MRI VIEWERS =====
+%% ===== iEEG: UPDATE COORDS IN ALL MRI VIEWERS IN DS =====
 function iEegMoveAllMriCrossHairs(hFig)
     if gui_brainstorm('isTabVisible', 'iEEG')
         global GlobalData
         [~, ~, iDS] = bst_figures('GetFigure', hFig);
         if ~isempty(GlobalData.DataSet(iDS).ChannelFile)
-            ApplyCoordsToAllFigures(hFig, 'scs');
+            ApplyCoordsToAllFigures(hFig, 'scs', 1);
         end
     end
 end
