@@ -3,8 +3,8 @@ function varargout = process_adjust_coordinates(varargin)
 % 
 % Native coordinates are based on system fiducials (e.g. MEG head coils), whereas Brainstorm's SCS
 % coordinates are based on the anatomical fiducial points. After alignment between MRI and
-% headpoints, the anatomical fiducials on the MRI side define the SCS and the ones in the channel
-% files (ChannelMat.SCS) are ignored.
+% headpoints (or manually), the anatomical fiducials on the MRI side define the SCS and the ones in
+% the channel files (ChannelMat.SCS) are ignored.
 
 % @=============================================================================
 % This function is part of the Brainstorm software:
@@ -24,7 +24,7 @@ function varargout = process_adjust_coordinates(varargin)
 % For more information type "brainstorm license" at command prompt.
 % =============================================================================@
 %
-% Authors: Marc Lalancette, 2018-2022
+% Authors: Marc Lalancette, 2018-2026
 
 eval(macro_method);
 end
@@ -357,12 +357,15 @@ end
 %                 end
 
 
-function [ChannelMat, NewChannelFiles, isError] = ResetChannelFile(ChannelMat, NewChannelFiles, sInput, sProcess)
+function [ChannelMat, NewChannelFiles, isError] = ResetChannelFile(ChannelMat, NewChannelFiles, sInput, sProcess, isCheckFilesOnly)
     % Reload a channel file, but keep projectors and history. First look for original file from
     % history, and if it's no longer there, user will be prompted. User selections are noted as
     % pairs {old, new} in NewChannelFiles for potential reuse (e.g. same original data at multiple
     % pre-processing steps).
     % This function does not save the file, but only returns the updated structure.
+    if nargin < 5 || isempty(isCheckFilesOnly)
+        isCheckFilesOnly = false;
+    end
     if nargin < 4 || isempty(sProcess)
         sProcess = [];
         isReport = false;
@@ -370,7 +373,7 @@ function [ChannelMat, NewChannelFiles, isError] = ResetChannelFile(ChannelMat, N
         isReport = true;
     end
     if nargin < 3
-        sInput = [];
+        sInput = []; % This doesn't work, we need .iStudy and .ChannelFile.
     end
     if nargin < 2 || isempty(NewChannelFiles)
         NewChannelFiles = cell(0,2);
@@ -406,6 +409,63 @@ function [ChannelMat, NewChannelFiles, isError] = ResetChannelFile(ChannelMat, N
             end
         end
     end
+    % If name is BIDS, check that subject and session match. A mismatch has been observed before,
+    % likely from an unknown bug which modified the indexing of studies or subjects in memory during
+    % BIDS import.
+    if ~isempty(ChannelFile) & contains(ChannelFile, 'sub-')
+        % Get current BIDS name from subject and study names
+        sStudy = bst_get('Study', sInput.iStudy);
+        if contains(sStudy.Name, 'sub-')
+            Str = sStudy.Name;
+        elseif contains(sStudy.BrainStormSubject, 'sub-')
+            Str = sStudy.BrainStormSubject;
+        else
+            Str = [];
+        end
+        if ~isempty(Str)
+            % Extract from "sub-" to first underscore, or end of string.
+            BidsSub = regexp(Str, 'sub-(.*?)([_/\-]|$)', 'tokens', 'once');
+            if ~isempty(BidsSub)
+                BidsSub = BidsSub{1};
+            end
+        else
+            BidsSub = [];
+        end
+        % Originally imported subject
+        ImportSub = regexp(ChannelFile, 'sub-(.*?)([_/\-]|$)', 'tokens', 'once');
+        if ~isempty(ImportSub)
+            ImportSub = ImportSub{1};
+        end
+        if ~contains(BidsSub, ImportSub)
+            Message = sprintf('Originally imported channel file does not match subject in study name. This could be a bug from the original import. %s, %s', ...
+                ChannelFile, sStudy.Name);
+            if isReport
+                bst_report('Warning', sProcess, sInput, Message);
+            else
+                disp(['BST> ' Message]);
+            end
+        elseif contains(ChannelFile, 'ses-') && contains(sStudy.Name, 'ses-')
+            % Check sessions if subject matches
+            BidsSes = regexp(sStudy.Name, 'ses-(.*?)([_/\-]|$)', 'tokens', 'once');
+            if ~isempty(BidsSes)
+                BidsSes = BidsSes{1};
+            end
+            ImportSes = regexp(ChannelFile, 'ses-(.*?)([_/\-]|$)', 'tokens', 'once');
+            if ~isempty(ImportSes)
+                ImportSes = ImportSes{1};
+            end
+            if ~contains(BidsSes, ImportSes)
+                Message = sprintf('Originally imported channel file does not match session in study name. This could be a bug from the original import. %s, %s', ...
+                    ChannelFile, sStudy.Name);
+                if isReport
+                    bst_report('Warning', sProcess, sInput, Message);
+                else
+                    disp(['BST> ' Message]);
+                end
+            end
+        end
+    end
+    % Get file format for re-import. Required or will get prompted even if file exists.
     if isfield(sProcess, 'options') && isfield(sProcess.options, 'format')
         FileFormatsChan = bst_get('FileFilters', 'channel');
         FileFormat = FileFormatsChan{sProcess.options.format.Value{1}, 3};
@@ -413,9 +473,13 @@ function [ChannelMat, NewChannelFiles, isError] = ResetChannelFile(ChannelMat, N
         FileFormat = [];
     end
     if NotFound
+        Message = sprintf('Could not find original channel file: %s.', ChannelFile);
         if isReport
-            bst_report('Info', sProcess, sInput, ...
-                sprintf('Could not find original channel file: %s.', ChannelFile));
+            bst_report('Info', sProcess, sInput, Message);
+        end
+        if isCheckFilesOnly
+            disp(['BST> ' Message]);
+            return;
         end
         % import_channel will prompt the user, but they would not know which file to pick!  And
         % prompt is modal for Matlab, so likely can't look at command window (e.g. if Brainstorm is
@@ -435,7 +499,10 @@ function [ChannelMat, NewChannelFiles, isError] = ResetChannelFile(ChannelMat, N
         
         [NewChannelMat, NewChannelFile] = import_channel(sInput.iStudy, '', FileFormat, 0, 0, 0, [], []);
     else
-        
+        if isCheckFilesOnly 
+            % Everything looks ok. Do nothing.
+            return;
+        end
         % Import from original file.
         [NewChannelMat, NewChannelFile] = import_channel(sInput.iStudy, ChannelFile, FileFormat, 0, 0, 0, [], 0);
         % iStudies, ChannelFile, FileFormat, ChannelReplace, ChannelAlign, isSave, isFixUnits, isApplyVox2ras)
@@ -995,7 +1062,8 @@ function M = GeoMedian(X, Precision)
 end % GeoMedian
 
 
-function [AlignType, isMriUpdated, isMriMatch, isSessionMatch, ChannelMat] = CheckPrevAdjustments(ChannelMat, sMri)
+function [AlignType, isMriUpdated, isMriMatch, isSessionMatch, ChannelMat, FidsType] = ...
+        CheckPrevAdjustments(ChannelMat, sMri, ChannelFile)
     % Flag if auto or manual registration performed, and if MRI fids updated. Print to command
     % window for now, if no output arguments. Also make sure to update ChannelMat.SCS if outputting
     % ChannelMat.
@@ -1007,6 +1075,9 @@ function [AlignType, isMriUpdated, isMriMatch, isSessionMatch, ChannelMat] = Che
     if any(~isfield(ChannelMat, {'History', 'HeadPoints'}))
         % Nothing to check.
         return;
+    end
+    if nargin < 3
+        ChannelFile = '';
     end
     if nargin < 2 || isempty(sMri) || ~isfield(sMri, 'History') || isempty(sMri.History)
         iMriHist = [];
@@ -1076,7 +1147,7 @@ function [AlignType, isMriUpdated, isMriMatch, isSessionMatch, ChannelMat] = Che
         % kept up to date when adjusting registration (manual or auto), so get them from head points
         % again.
         % Get the three fiducials in the head points
-        ChannelMat = UpdateChannelMatScs(ChannelMat);
+        [ChannelMat, FidsType] = UpdateChannelMatScs(ChannelMat, ChannelFile);
         % Check if coordinates differ by more than 1 um.
         if isempty(ChannelMat.SCS.NAS) || isempty(ChannelMat.SCS.LPA) || isempty(ChannelMat.SCS.RPA) 
             isMriMatch = false;
@@ -1089,10 +1160,14 @@ function [AlignType, isMriUpdated, isMriMatch, isSessionMatch, ChannelMat] = Che
                 any(abs(sMri.SCS.RPA - cs_convert(sMri, 'scs', 'mri', ChannelMat.SCS.RPA) .* 1000) > 1e-3)
             isMriMatch = false;
             % Check if just different alignment, or if different set of fiducials (different
-            % session), using inter-fid distances.
-            DiffMri = [sMri.SCS.NAS - sMri.SCS.LPA, sMri.SCS.LPA - sMri.SCS.RPA, sMri.SCS.RPA - sMri.SCS.NAS];
-            DiffChannel = [ChannelMat.SCS.NAS - ChannelMat.SCS.LPA, ChannelMat.SCS.LPA - ChannelMat.SCS.RPA, ChannelMat.SCS.RPA - ChannelMat.SCS.NAS];
-            if any(abs(DiffMri - DiffChannel) > 1e-3)
+            % session), using inter-fid distances.  Careful again for different units, mm vs m.
+            DiffMri = [sqrt(sum((sMri.SCS.NAS - sMri.SCS.LPA).^2)), ...
+                sqrt(sum((sMri.SCS.LPA - sMri.SCS.RPA).^2)), ...
+                sqrt(sum((sMri.SCS.RPA - sMri.SCS.NAS).^2))];
+            DiffChannel = 1000 .* [sqrt(sum((ChannelMat.SCS.NAS - ChannelMat.SCS.LPA).^2)), ...
+                sqrt(sum((ChannelMat.SCS.LPA - ChannelMat.SCS.RPA).^2)), ...
+                sqrt(sum((ChannelMat.SCS.RPA - ChannelMat.SCS.NAS).^2))];
+            if any((DiffMri - DiffChannel) > 1e-3)
                 isSessionMatch = false;
                 if isPrint
                     disp('BST> MRI fiducials previously updated, but different session than current digitized fiducials.');
@@ -1114,7 +1189,7 @@ function [AlignType, isMriUpdated, isMriMatch, isSessionMatch, ChannelMat] = Che
         if nargout > 4
             % Update SCS for consistency.
             % Get the three fiducials in the head points
-            ChannelMat = UpdateChannelMatScs(ChannelMat);
+            [ChannelMat, FidsType] = UpdateChannelMatScs(ChannelMat, ChannelFile);
         end
         isMriUpdated = false;
         isMriMatch = false;
@@ -1172,21 +1247,114 @@ function [DistHead, DistSens, Message] = CheckCurrentAdjustments(ChannelMat, Cha
 end
 
 
-function ChannelMat = UpdateChannelMatScs(ChannelMat)
+function [ChannelMat, FidsType] = UpdateChannelMatScs(ChannelMat, ChannelFile)
     % Update the coordinates of the digitized anatomical fiducials in the channel SCS field, after
     % potentially having edited the coregistration such that these points no longer define the SCS
     % for the functional data - it's still defined by the MRI anatomical fiducials.
-    if ~isfield(ChannelMat, 'HeadPoints')
+    % If there are no head points, try to use the original head coil positions for CTF MEG.
+    %
+    % This also adds a ChannelMat.Native field, similar to .SCS, which contains the same fiducial
+    % points in "native" coordinates (for CTF: based on initial head coil positions, but still in
+    % meters here, not cm), as well as a transform from SCS back to Native.
+    %
+    % FidsType can be 'none', 'digitized landmarks', 'digitized head coils', 'initial
+    % localization of head coils', meant to be included in BIDS descriptions.
+
+    if nargin < 2 || isempty(ChannelFile)
+        ChannelFile = '';
+    end
+
+    FidsType = 'none';
+    isCtfHeadCoils = false;
+    isDigitizedFids = false;
+    if isfield(ChannelMat, 'HeadPoints')
+        HeadPoints = ChannelMat.HeadPoints;
+        % Get the three anatomical fiducials in the head points
+        iNas = find(strcmpi(HeadPoints.Label, 'Nasion') | strcmpi(HeadPoints.Label, 'NAS'));
+        iLpa = find(strcmpi(HeadPoints.Label, 'Left')   | strcmpi(HeadPoints.Label, 'LPA'));
+        iRpa = find(strcmpi(HeadPoints.Label, 'Right')  | strcmpi(HeadPoints.Label, 'RPA'));
+        if ~isempty(iNas) && ~isempty(iLpa) && ~isempty(iRpa)
+            isDigitizedFids = true;
+            FidsType = 'digitized landmarks';
+        end
+        % Look for head coils.
+        iHpiN = find(strcmpi(HeadPoints.Label, 'HPI-N') | strcmpi(HeadPoints.Label, 'MEG-N'));
+        iHpiL = find(strcmpi(HeadPoints.Label, 'HPI-L') | strcmpi(HeadPoints.Label, 'MEG-L'));
+        iHpiR = find(strcmpi(HeadPoints.Label, 'HPI-R') | strcmpi(HeadPoints.Label, 'MEG-R'));
+        if ~isempty(iHpiN) && ~isempty(iHpiL) && ~isempty(iHpiR)
+            isDigitizedFids = true;
+            if strcmpi(FidsType, 'none')
+                FidsType = 'digitized head coils';
+            end
+        end
+    end
+        
+    if ~isDigitizedFids && ~isempty(ChannelFile)
+        % (This code was copied from channel_align_manual, where head coils are displayed.)
+        % Load data if CTF MEG raw, to get initial head coil positions. We need to load the data to
+        % check if it's CTF MEG.
+        % Look for the first raw data file for this channel file. Unfortunately, there's no
+        % ChannelFile info in ChannelMat, so can't do this if the file isn't provided as well.
+        DataFiles = bst_get('DataForChannelFile', ChannelFile);
+        DataFile = [];
+        for iData = 1:length(DataFiles)
+            [~, FileName] = fileparts(DataFiles{iData});
+            if (length(FileName) > 9) && ~isempty(strfind(FileName, 'data_0raw')) % isRaw
+                DataFile = DataFiles{iData};
+                break;
+            end
+        end
+        if ~isempty(DataFile)
+            % Check if CTF dataset
+            DataMat = in_bst_data(DataFile, {'Device', 'F'});
+            if strcmp(DataMat.Device, 'CTF')
+                % Look for head coils in data file header.
+                HeadPoints = [];
+                if isfield(DataMat, 'F') && isfield(DataMat.F, 'header') && ...
+                        isfield(DataMat.F.header, 'hc') && isfield(DataMat.F.header.hc, 'SCS')
+                    % Make a headpoint-like structure.
+                    HeadPoints.Loc = [DataMat.F.header.hc.SCS.NAS', ...
+                        DataMat.F.header.hc.SCS.LPA', ...
+                        DataMat.F.header.hc.SCS.RPA']; % coordinates as columns
+                    HeadPoints.Label = {'MEG-N', 'MEG-L', 'MEG-R'};
+                    HeadPoints.Type = {'HPI', 'HPI', 'HPI'};
+                end
+                if ~isempty(HeadPoints)
+                    isCtfHeadCoils = true;
+                    % Apply all MEG transformations in channel file to go from "dewar" to "SCS".
+                    ChannelMat = in_bst_channel(ChannelFile);
+                    T = eye(4);
+                    for t = 1:numel(ChannelMat.TransfMeg)
+                        T = ChannelMat.TransfMeg{t} * T;
+                    end
+                    HeadPoints.Loc = T(1:3,:) * [HeadPoints.Loc; 1, 1, 1];
+                end
+            end
+        end
+        if ~isCtfHeadCoils
+            % No points and no CTF head coils.
+            return;
+        end
+    elseif ~isDigitizedFids
+        % No points and couldn't check for CTF head coils.
         return;
     end
-    % Get the three anatomical fiducials in the head points
-    iNas = find(strcmpi(ChannelMat.HeadPoints.Label, 'Nasion') | strcmpi(ChannelMat.HeadPoints.Label, 'NAS'));
-    iLpa = find(strcmpi(ChannelMat.HeadPoints.Label, 'Left')   | strcmpi(ChannelMat.HeadPoints.Label, 'LPA'));
-    iRpa = find(strcmpi(ChannelMat.HeadPoints.Label, 'Right')  | strcmpi(ChannelMat.HeadPoints.Label, 'RPA'));
+
+    if isCtfHeadCoils % implies ~isDigitizedFids
+        FidsType = 'initial localization of head coils';
+        % Get the coils however they are named. (Here should only be MEG-X, named above.)
+        iNas = find(strcmpi(HeadPoints.Label, 'Nasion') | strcmpi(HeadPoints.Label, 'NAS'));
+        iLpa = find(strcmpi(HeadPoints.Label, 'Left')   | strcmpi(HeadPoints.Label, 'LPA'));
+        iRpa = find(strcmpi(HeadPoints.Label, 'Right')  | strcmpi(HeadPoints.Label, 'RPA'));
+        iHpiN = find(strcmpi(HeadPoints.Label, 'HPI-N') | strcmpi(HeadPoints.Label, 'MEG-N'));
+        iHpiL = find(strcmpi(HeadPoints.Label, 'HPI-L') | strcmpi(HeadPoints.Label, 'MEG-L'));
+        iHpiR = find(strcmpi(HeadPoints.Label, 'HPI-R') | strcmpi(HeadPoints.Label, 'MEG-R'));
+        % Otherwise we got the digitized points above already.
+    end
     if ~isempty(iNas) && ~isempty(iLpa) && ~isempty(iRpa)
-        ChannelMat.SCS.NAS = mean(ChannelMat.HeadPoints.Loc(:,iNas)', 1); %#ok<*UDIM> 
-        ChannelMat.SCS.LPA = mean(ChannelMat.HeadPoints.Loc(:,iLpa)', 1);
-        ChannelMat.SCS.RPA = mean(ChannelMat.HeadPoints.Loc(:,iRpa)', 1);
+        ChannelMat.SCS.NAS = mean(HeadPoints.Loc(:,iNas)', 1); %#ok<*UDIM> 
+        ChannelMat.SCS.LPA = mean(HeadPoints.Loc(:,iLpa)', 1);
+        ChannelMat.SCS.RPA = mean(HeadPoints.Loc(:,iRpa)', 1);
         % The SCS.R, T and Origin fields no longer have any use, except for missing digitized fids
         % (see below), but keep them updated always for consistency.
         [~, ChannelMat] = cs_compute(ChannelMat, 'scs');
@@ -1194,14 +1362,11 @@ function ChannelMat = UpdateChannelMatScs(ChannelMat)
     % Do the same with head coils, used when exporting coregistration to BIDS
     % Also, if only the head coils were digitized and no anatomical points, use these as SCS, which
     % is what Brainstorm will implicitly use as SCS coordinates to align with the MRI anyway.
-    iHpiN = find(strcmpi(ChannelMat.HeadPoints.Label, 'HPI-N'));
-    iHpiL = find(strcmpi(ChannelMat.HeadPoints.Label, 'HPI-L'));
-    iHpiR = find(strcmpi(ChannelMat.HeadPoints.Label, 'HPI-R'));
     if ~isempty(iHpiN) && ~isempty(iHpiL) && ~isempty(iHpiR)
         % Temporarily put the head coils there to calculate transform.
-        ChannelMat.Native.NAS = mean(ChannelMat.HeadPoints.Loc(:,iHpiN)', 1);
-        ChannelMat.Native.LPA = mean(ChannelMat.HeadPoints.Loc(:,iHpiL)', 1);
-        ChannelMat.Native.RPA = mean(ChannelMat.HeadPoints.Loc(:,iHpiR)', 1);
+        ChannelMat.Native.NAS = mean(HeadPoints.Loc(:,iHpiN)', 1);
+        ChannelMat.Native.LPA = mean(HeadPoints.Loc(:,iHpiL)', 1);
+        ChannelMat.Native.RPA = mean(HeadPoints.Loc(:,iHpiR)', 1);
         % Get "current" SCS to Native transformation.
         TmpChanMat = ChannelMat;
         TmpChanMat.SCS = ChannelMat.Native;
@@ -1210,6 +1375,13 @@ function ChannelMat = UpdateChannelMatScs(ChannelMat)
         % fids present. This transformation would then go back from SCS to Native.
         [~, TmpChanMat] = cs_compute(TmpChanMat, 'scs');
         ChannelMat.Native = TmpChanMat.SCS;
+        % Check if should be identity.
+        if max(abs(ChannelMat.Native.T)) < 1e-9
+            ChannelMat.Native.T = zeros(3,1);
+        end
+        if max(abs(ChannelMat.Native.R(:) - [1 0 0 0 1 0 0 0 1])) < 1e-9
+            ChannelMat.Native.R = eye(3);
+        end
         % If SCS missing (no anat points), Native matches SCS. Explicitly save SCS, which is missing
         % from initial import.
         if ~isfield(ChannelMat, 'SCS') || ~isfield(ChannelMat.SCS, 'NAS') || isempty(ChannelMat.SCS.NAS)
@@ -1222,17 +1394,17 @@ function ChannelMat = UpdateChannelMatScs(ChannelMat)
             ChannelMat.Native.LPA(:) = [ChannelMat.Native.R, ChannelMat.Native.T] * [ChannelMat.SCS.LPA'; 1];
             ChannelMat.Native.RPA(:) = [ChannelMat.Native.R, ChannelMat.Native.T] * [ChannelMat.SCS.RPA'; 1];
         end
-    else
-        if ~isempty(iNas) && ~isempty(iLpa) && ~isempty(iRpa)
+    else % with the checks above, here we must now have digitized anat points
+    %     if ~isempty(iNas) && ~isempty(iLpa) && ~isempty(iRpa)
             % Missing digitized MEG head coils, probably the anatomical points are actually coils.
             % No study, subject or file name available to print here.
             disp('BST> Missing digitized MEG head coils (in channel file), assuming NAS/LPA/RPA are actually head coils, but they should be renamed.');
             ChannelMat.Native = ChannelMat.SCS;
-        else
-            ChannelMat.Native.R = [];
-            ChannelMat.Native.T = [];
-            disp('BST> No digitized fiducials, neither anatomical nor MEG head coils.');
-        end
+    %     else % This should never happen now, 
+    %         ChannelMat.Native.R = [];
+    %         ChannelMat.Native.T = [];
+    %         disp('BST> No digitized fiducials, neither anatomical nor MEG head coils.');
+    %     end
     end
 end
 
@@ -1259,12 +1431,13 @@ function [Transform, isCancel, isError] = channel_align_scs(ChannelFile, Transfo
 %
 % INPUTS:
 %     - ChannelFile : Channel file to align with its anatomy
-%     - Transform   : Transformation matrix from digitized SCS coordinates to MRI SCS coordinates, 
-%                     after some alignment is made (auto or manual) and the two no longer match.
-%                     This transform should not already be saved in the ChannelFile, though the
-%                     file may already contain similar adjustments, in which case Transform would be
-%                     an additional adjustment to add. (This will typically be empty or identity, it
-%                     was intended for calling from manual alignment panel, but now done after.)
+%     - Transform   : (This will typically be empty or identity, it was intended for calling from 
+%                     manual alignment panel, but now done after.) Transformation matrix from
+%                     digitized SCS coordinates to MRI SCS coordinates, after some alignment is made
+%                     (auto or manual) and the two no longer match. This transform should not
+%                     already be saved in the ChannelFile, though the file may already contain
+%                     similar adjustments, in which case Transform would be an additional adjustment
+%                     to add.
 %     - isInteractive : If true, display dialog in case of errors, or if this was already done 
 %                     previously for this MRI. 
 %     - isConfirm   : If true, ask the user for confirmation before proceeding.
@@ -1290,7 +1463,7 @@ function [Transform, isCancel, isError] = channel_align_scs(ChannelFile, Transfo
 %                     idea is that the returned Transform applied to the channels would maintain the
 %                     registration.
 
-% Authors: Marc Lalancette 2022-2025
+% Authors: Marc Lalancette 2022-2026
 
 if nargin < 6 || isempty(sProcess)
     isReport = false;
@@ -1332,11 +1505,20 @@ end
 % Get Channels
 ChannelMat = in_bst_channel(ChannelFile);
 
-% Check if digitized anat points present, saved in ChannelMat.SCS.
-% Note that these coordinates are NOT currently updated when doing refine with head points (below).
-% They are in "initial SCS" coordinates, updated in channel_detect_type.
-if ~all(isfield(ChannelMat.SCS, {'NAS','LPA','RPA'})) || ~(length(ChannelMat.SCS.NAS) == 3) || ~(length(ChannelMat.SCS.LPA) == 3) || ~(length(ChannelMat.SCS.RPA) == 3)
-    Message = 'Digitized nasion and ear points not found.';
+% Check if already adjusted
+sMriOld = in_mri_bst(sSubject.Anatomy(sSubject.iAnatomy).FileName);
+% This Check function also updates ChannelMat.SCS with the saved (possibly previously adjusted) head
+% points. Otherwise, these coordinates are NOT currently updated when doing refine with head points
+% (below). They'd be in "initial SCS" coordinates, updated in channel_detect_type.
+% (We don't consider isMriMatch here because we still have to apply the provided Transformation.)
+[~, isMriUpdated, ~, ~, ChannelMat, FidsType] = CheckPrevAdjustments(ChannelMat, sMriOld, ChannelFile);
+
+% Check if digitized anat points present, saved in ChannelMat.SCS.  If anat points were missing,
+% UpdateChannelMatScs will have added them as head coil positions, either digitized, or if these are
+% also missing, the initial detected positions for a CTF MEG system.  So this should never really be
+% empty anymore.
+if strcmpi(FidsType, 'none')
+    Message = 'Digitized nasion and ear points not found, and unable to fall back on head coils.';
     if isReport
         bst_report('Error', sProcess, sInput, Message);
     elseif isInteractive
@@ -1346,14 +1528,18 @@ if ~all(isfield(ChannelMat.SCS, {'NAS','LPA','RPA'})) || ~(length(ChannelMat.SCS
     end
     isCancel = true;
     return;
+elseif ~strcmpi(FidsType, 'digitized landmarks')
+    % Inform user.
+    Message = ['No digitized anatomical points. Using ' FidsType ' instead.'];
+    if isReport
+        bst_report('Info', sProcess, sInput, Message);
+    elseif isInteractive
+        bst_error(Message, 'Apply digitized anatomical fiducials to MRI', 0);
+    else
+        disp(['BST> ' Message]);
+    end
 end
 
-% Check if already adjusted
-sMriOld = in_mri_bst(sSubject.Anatomy(sSubject.iAnatomy).FileName);
-% This Check function also updates ChannelMat.SCS with the saved (possibly previously adjusted) head
-% points IF isMriUpdated. (We don't consider isMriMatch here because we still have to apply the
-% provided Transformation.)
-[~, isMriUpdated, ~, ~, ChannelMat] = CheckPrevAdjustments(ChannelMat, sMriOld);
 % Get user confirmation
 if isMriUpdated
     % Already done previously.

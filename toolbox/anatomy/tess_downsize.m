@@ -155,8 +155,9 @@ if isTessInput
 else
     % Progress bar
     bst_progress('start', 'Resample surface', 'Loading file...');
-    % Load file
-    TessMat = in_tess_bst(TessFile);
+    % Load file, but don't compute missing fields (normals, connectivity) which are computed when
+    % needed below.
+    TessMat = in_tess_bst(TessFile, 0);
     % Prepare variables
 end
 TessMat.Faces    = double(TessMat.Faces);
@@ -466,6 +467,7 @@ switch (Method)
         NewTessMat.Faces = oMesh.Faces;
         NewTessMat.Vertices = oMesh.Vertices;
 
+        MethodTag = '_simplify';
 end
 
 if isTessInput

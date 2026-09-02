@@ -250,7 +250,7 @@ if isCtfMegRaw
         for t = 1:numel(ChannelMat.TransfMeg)
             T = ChannelMat.TransfMeg{t} * T;
         end
-        HeadCoils.Loc = T * [HeadCoils.Loc; 1, 1, 1];
+        HeadCoils.Loc = T(1:3,:) * [HeadCoils.Loc; 1, 1, 1];
 
         figure_3d('ViewHeadCoils', hFig, true, HeadCoils) % isVisible
 
@@ -274,6 +274,8 @@ if isCtfMegRaw
             end
         end
     end
+else
+    isHeadCoils = false;
 end
 
 
@@ -384,10 +386,12 @@ gChanAlign.HeadPointsHpiLoc     = HeadPointsHpiLoc;
 gChanAlign.HeadPointsMarkersSel  = [];
 gChanAlign.hHeadPointsMarkersSel = [];
 gChanAlign.isHeadCoils         = isHeadCoils;
-gChanAlign.hHeadCoilsMarkers   = hHeadCoilsMarkers;
-gChanAlign.hHeadCoilsLabels    = hHeadCoilsLabels;
-gChanAlign.HeadCoilsMarkersLoc = HeadCoilsMarkersLoc;
-gChanAlign.HeadCoilsLabelsLoc  = HeadCoilsLabelsLoc;
+if isHeadCoils
+    gChanAlign.hHeadCoilsMarkers   = hHeadCoilsMarkers;
+    gChanAlign.hHeadCoilsLabels    = hHeadCoilsLabels;
+    gChanAlign.HeadCoilsMarkersLoc = HeadCoilsMarkersLoc;
+    gChanAlign.HeadCoilsLabelsLoc  = HeadCoilsLabelsLoc;
+end
 
 % ===== CONFIGURE FIGURE =====
 % Get figure description in GlobalData structure
@@ -1025,7 +1029,7 @@ function AlignClose_Callback(varargin)
         % Load original channel file
         ChannelMatOrig = in_bst_channel(gChanAlign.ChannelFile);
         % Report (in command window) max head and sensor displacements from changes.
-        if SaveChanges || gChanAlign.isHeadPoints
+        if SaveChanges && gChanAlign.isHeadPoints
             process_adjust_coordinates('CheckCurrentAdjustments', ChannelMat, ChannelMatOrig);
         end
         % Save changes to channel file and close figure
